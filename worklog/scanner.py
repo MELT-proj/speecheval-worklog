@@ -43,6 +43,7 @@ class ScannedRun:
     created: str | None
     finished: str | None
     log_id: str | None
+    provider: str = ""
     metrics: dict[str, float] = field(default_factory=dict)
     pending: tuple[str, ...] = ()
     row_id: int | None = None
@@ -157,6 +158,7 @@ def scan_run(path: Path) -> ScannedRun | None:
         created=ev.get("created"),
         finished=(body.get("stats") or {}).get("completed_at"),
         log_id=ev.get("eval_id"),
+        provider=str(ev.get("model") or ""),
         metrics=metrics,
         pending=pending,
     )

@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS runs (
     campaign TEXT, model TEXT, benchmark TEXT, slice TEXT, task TEXT,
     src TEXT, tgt TEXT, status TEXT,
     total_samples INTEGER, completed_samples INTEGER,
-    created TEXT, finished TEXT, log_id TEXT
+    created TEXT, finished TEXT, log_id TEXT, provider TEXT
 );
 CREATE TABLE IF NOT EXISTS metrics (
     run_id INTEGER NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
 _RUN_COLUMNS = (
     "id, path, mtime_ns, size, campaign, model, benchmark, slice, task, src, tgt, status,"
-    " total_samples, completed_samples, created, finished, log_id"
+    " total_samples, completed_samples, created, finished, log_id, provider"
 )
 
 
@@ -51,6 +51,11 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(runs)")}
+            if "provider" not in columns:
+                # Old cache from before the provider column: it is disposable.
+                conn.executescript("DROP TABLE runs; DROP TABLE metrics;")
+                conn.executescript(_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=30)
@@ -73,18 +78,18 @@ class Store:
                     continue
                 conn.execute(
                     "INSERT INTO runs (path, mtime_ns, size, campaign, model, benchmark, slice, task, src, tgt,"
-                    " status, total_samples, completed_samples, created, finished, log_id)"
-                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                    " status, total_samples, completed_samples, created, finished, log_id, provider)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                     " ON CONFLICT(path) DO UPDATE SET mtime_ns=excluded.mtime_ns, size=excluded.size,"
                     " campaign=excluded.campaign, model=excluded.model, benchmark=excluded.benchmark,"
                     " slice=excluded.slice, task=excluded.task, src=excluded.src, tgt=excluded.tgt,"
                     " status=excluded.status, total_samples=excluded.total_samples,"
                     " completed_samples=excluded.completed_samples, created=excluded.created,"
-                    " finished=excluded.finished, log_id=excluded.log_id",
+                    " finished=excluded.finished, log_id=excluded.log_id, provider=excluded.provider",
                     (
                         item.path, item.mtime_ns, item.size, item.campaign, item.model, item.benchmark,
                         item.slice, item.task, item.src, item.tgt, item.status, item.total_samples,
-                        item.completed_samples, item.created, item.finished, item.log_id,
+                        item.completed_samples, item.created, item.finished, item.log_id, item.provider,
                     ),
                 )
                 run_id = conn.execute("SELECT id FROM runs WHERE path=?", (item.path,)).fetchone()["id"]
@@ -163,6 +168,7 @@ class Store:
             created=row["created"],
             finished=row["finished"],
             log_id=row["log_id"],
+            provider=row["provider"] or "",
             metrics=values,
             pending=pending,
             row_id=row["id"],

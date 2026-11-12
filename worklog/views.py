@@ -105,6 +105,7 @@ def build_snapshot(
     """The whole view payload: slices, server-side matrix, filters, KPIs and feed."""
     slices = [_slice_row(config, run) for run in runs]
     models = sorted({run.model for run in runs})
+    providers = {run.model: (run.provider or run.model) for run in runs}
     slices_by_family: dict[str, list[ScannedRun]] = {}
     for run in runs:
         family = family_of(config, run)
@@ -143,7 +144,7 @@ def build_snapshot(
             "families": [family.name for family in config.families],
             "languages": languages,
         },
-        "model_families": {model: model_family(model) for model in models},
+        "model_families": {model: model_family(provider) for model, provider in providers.items()},
         "slices": slices,
         "matrix": matrix,
         "runs": [

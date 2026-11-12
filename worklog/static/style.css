@@ -159,6 +159,17 @@ input[type="search"] { min-width: 210px; }
 /* ---- matrix ------------------------------------------------------------- */
 
 .matrix { overflow: auto; max-height: 68vh; }
+.matrix-block + .matrix-block { border-top: 1px solid var(--line); }
+.matrix-title {
+  margin: 0;
+  padding: 14px 18px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.star { color: var(--good); font-size: 10px; margin-left: 5px; }
 
 table.matrix-table { border-collapse: separate; border-spacing: 0; width: 100%; font-variant-numeric: tabular-nums; }
 .matrix-table th, .matrix-table td { padding: 9px 14px; border-bottom: 1px solid var(--line-soft); }
