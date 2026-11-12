@@ -44,6 +44,7 @@ class ScannedRun:
     finished: str | None
     log_id: str | None
     provider: str = ""
+    lang: str | None = None
     metrics: dict[str, float] = field(default_factory=dict)
     pending: tuple[str, ...] = ()
     row_id: int | None = None
@@ -132,6 +133,11 @@ def scan_run(path: Path) -> ScannedRun | None:
     args = ev.get("task_args") or {}
     sample_meta = (body.get("samples") or [{}])[0].get("metadata") if body.get("samples") else None
     src, tgt = parse_pair(args.get("dataset_id"), slice_id, task, sample_meta)
+    # A language only for ASR: an ST sample's `lang` is its target, which would
+    # make a X->en heatmap collapse into one "en" column.
+    lang = None
+    if src is None and tgt is None:
+        lang = str(args.get("lang") or (sample_meta or {}).get("lang") or "") or None
 
     results = body.get("results") or {}
     scores = results.get("scores") or []
@@ -159,6 +165,7 @@ def scan_run(path: Path) -> ScannedRun | None:
         finished=(body.get("stats") or {}).get("completed_at"),
         log_id=ev.get("eval_id"),
         provider=str(ev.get("model") or ""),
+        lang=lang,
         metrics=metrics,
         pending=pending,
     )

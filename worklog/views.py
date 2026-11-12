@@ -58,6 +58,7 @@ def _slice_row(config: Config, run: ScannedRun) -> dict:
         "src": run.src,
         "tgt": run.tgt,
         "direction": direction_of(run.src, run.tgt),
+        "lang": run.lang,
         "status": run.status,
         "samples": run.total_samples,
         "completed": run.completed_samples,
@@ -126,7 +127,7 @@ def build_snapshot(
         ]
         matrix[task] = {"metric": rule_name, "label": rule.label, "lower": rule.lower, "cells": cells}
 
-    languages = sorted({lang for row in slices for lang in (row["src"], row["tgt"]) if lang})
+    languages = sorted({lang for row in slices for lang in (row["lang"], row["src"], row["tgt"]) if lang})
     return {
         "version": version,
         "generated_at": now,

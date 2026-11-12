@@ -93,6 +93,7 @@ def run(
     finished="2026-11-12T10:05:00+00:00",
     log_id="x",
     provider="",
+    lang=None,
     metrics=None,
     pending=(),
 ) -> ScannedRun:
@@ -115,6 +116,7 @@ def run(
         finished=finished,
         log_id=log_id,
         provider=provider,
+        lang=lang,
         metrics={"corpus_bleu": 20.0} if metrics is None else metrics,
         pending=pending,
     )

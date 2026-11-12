@@ -27,7 +27,7 @@ window.Worklog = window.Worklog || {};
       (slice) =>
         (!state.campaign || slice.campaign === state.campaign) &&
         (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily) &&
-        (!state.language || slice.src === state.language || slice.tgt === state.language)
+        (!state.language || slice.src === state.language || slice.tgt === state.language || slice.lang === state.language)
     );
   }
 

@@ -77,3 +77,28 @@ def test_matrix_renders_and_drilldown_opens(live_server, tmp_path):
         assert page.inner_text("#modal-title")
         page.screenshot(path=str(tmp_path / "drilldown.png"), full_page=True)
         browser.close()
+
+
+def test_page_boots_with_kpis_heatmap_feed_and_filters(live_server, tmp_path):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1400})
+        page.goto(live_server)
+        page.wait_for_selector("#kpis .kpi")
+        page.wait_for_selector("#heatmap canvas")
+        page.wait_for_selector("#feed .run")
+
+        assert "MODELS" in page.inner_text("#kpis").upper()
+        assert "success" in page.inner_text("#feed").lower()
+        assert "updated" in page.inner_text("#statusline")
+        assert page.locator("#filter-language").count() == 1
+        page.screenshot(path=str(tmp_path / "page-default.png"), full_page=True)
+
+        page.select_option("#filter-language", "de")
+        page.wait_for_function("() => document.querySelector('#matrix').innerText.includes('20.00')")
+        assert "language=de" in page.url
+        page.screenshot(path=str(tmp_path / "page.png"), full_page=True)
+
+        page.click("#refresh")
+        page.wait_for_function("() => document.getElementById('refresh').textContent === 'Refresh'")
+        browser.close()

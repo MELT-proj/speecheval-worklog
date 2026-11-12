@@ -52,3 +52,21 @@ def test_model_family():
     assert model_family("melt/hf/canary") == "baseline"
     assert model_family("melt/checkpoints/x") == "melt"
     assert model_family("smurf//e/x.ckpt") == "smurf"
+
+
+def test_language_field_only_for_asr(tmp_path):
+    st = scan_run(make_log(tmp_path))
+    assert st.lang is None
+    asr = scan_run(
+        make_log(
+            tmp_path,
+            benchmark="voxpopuli-dev",
+            slice_id="asr-en",
+            task="asr",
+            dataset_id="voxpopuli-en-dev",
+            lang="en",
+            src=None,
+            tgt=None,
+        )
+    )
+    assert asr.lang == "en"
