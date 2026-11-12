@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpeechEval Worklog</title>
+  <link rel="stylesheet" href="/static/vendor/tabulator.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">SE</div>
+      <div>
+        <h1>SpeechEval <span>worklog</span></h1>
+        <p class="tagline">Recognition and translation results, read live from inspect logs</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="statusline" class="statusline">connecting…</span>
+      <button id="refresh" class="btn" type="button" title="Rescan the source folder now">Refresh</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="kpis" class="kpis" aria-label="Summary"></section>
+
+    <section class="card filters">
+      <div id="filters" class="filter-row" aria-label="Filters"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Results matrix</h2>
+        <span class="hint">headline metric per benchmark family · click a cell for languages and logs</span>
+      </div>
+      <div id="matrix" class="matrix"></div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <div class="card-head">
+          <h2>Language heatmap</h2>
+          <span class="hint" id="heatmap-hint">lower is better for WER</span>
+        </div>
+        <div id="heatmap" class="heatmap"></div>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <h2>Run feed</h2>
+          <span class="hint">newest first</span>
+        </div>
+        <div id="feed" class="feed"></div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="modal" class="modal">
+    <div class="modal-head">
+      <h2 id="modal-title">Slice detail</h2>
+      <button class="btn ghost" id="modal-close" type="button">Close</button>
+    </div>
+    <div id="modal-body"></div>
+  </dialog>
+
+  <script src="/static/vendor/echarts.min.js"></script>
+  <script src="/static/vendor/tabulator.min.js"></script>
+  <script src="/static/util.js"></script>
+  <script src="/static/matrix.js"></script>
+  <script src="/static/charts.js"></script>
+  <script src="/static/feed.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

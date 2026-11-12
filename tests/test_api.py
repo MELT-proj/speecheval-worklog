@@ -1,19 +1,4 @@
-import pytest
-
-from worklog.app import create_app
-from worklog.store import Store
-
 from .helpers import run
-
-
-@pytest.fixture
-def store(tmp_path):
-    return Store(tmp_path / "w.sqlite")
-
-
-@pytest.fixture
-def client(cfg, store):
-    return create_app(cfg, store).test_client()
 
 
 def test_snapshot_shape(client, store):
