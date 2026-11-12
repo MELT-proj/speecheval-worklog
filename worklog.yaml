@@ -1,0 +1,38 @@
+# SpeechEval worklog. Read-only: the only write is the SQLite cache.
+# Drop inspect logs under a campaign folder in `roots` and the page picks them up.
+
+roots:
+  - /mnt/scratch-artemis/giuseppe/melt-data/eval-runs
+include: ["speechval-*"]        # campaign folder globs; "*" for everything
+ignore: ["**/smoke-limit*/**", "**/smoke/**", "**/packs/**"]
+cache: /mnt/scratch-artemis/giuseppe/worklog/worklog.sqlite
+port: 8765
+host: 127.0.0.1                 # --host 0.0.0.0 when the link is shared
+interval_seconds: 30
+aggregate: macro                # macro | weighted
+
+# Matrix columns, in display order. A slice matches a family by benchmark and,
+# when given, direction (derived from its source/target languages).
+families:
+  - {name: LibriSpeech, task: asr, benchmarks: [librispeech-validation-clean, librispeech-validation-other]}
+  - {name: VoxPopuli, task: asr, benchmarks: [voxpopuli-dev]}
+  - {name: FLEURS XtoEN, task: st, direction: xen, benchmarks: [fleurs24-st-xen-dev]}
+  - {name: FLEURS ENtoX, task: st, direction: enx, benchmarks: [fleurs24-st-enx-dev]}
+  - {name: CoVoST2 XtoEN, task: st, direction: xen, benchmarks: [covost2-dev]}
+  - {name: CoVoST2 ENtoX, task: st, direction: enx, benchmarks: [covost2-enx-dev]}
+  - {name: Europarl XtoEN, task: st, direction: xen, benchmarks: [europarl-st-dev]}
+  - {name: Europarl ENtoX, task: st, direction: enx, benchmarks: [europarl-st-dev]}
+
+metrics:
+  corpus_wer_raw: {label: WER, lower: true}
+  corpus_wer_extracted: {label: WER (extracted), lower: true}
+  corpus_cer_raw: {label: CER, lower: true}
+  corpus_bleu: {label: BLEU, lower: false}
+  corpus_chrf: {label: chrF, lower: false}
+  corpus_spbleu: {label: spBLEU, lower: false}
+  metricx: {label: MetricX, lower: true}
+  comet: {label: COMET, lower: false}
+
+headline:
+  asr: corpus_wer_raw
+  st: corpus_bleu
