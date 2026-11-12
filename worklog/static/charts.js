@@ -33,7 +33,8 @@ window.Worklog = window.Worklog || {};
   function activeTask(snapshot, state, slices) {
     if (state.family) return taskForFamily(snapshot, state.family) || "st";
     if (state.task) return state.task;
-    return ["asr", "st"].find((task) => slices.some((slice) => slice.task === task)) || "st";
+    const present = ["st", "asr"].filter((task) => slices.some((slice) => slice.task === task));
+    return present[0] || "st";
   }
 
   function activeFamily(snapshot, state, slices, task) {
@@ -131,7 +132,7 @@ window.Worklog = window.Worklog || {};
       },
       visualMap: {
         min: Number.isFinite(min) ? min : 0,
-        max: Number.isFinite(max) ? max : 1,
+        max: Number.isFinite(max) && Number.isFinite(min) && max > min ? max : (Number.isFinite(min) ? min + 1e-9 : 1),
         calculable: false,
         orient: "horizontal",
         left: "center",

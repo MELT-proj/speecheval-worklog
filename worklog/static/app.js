@@ -96,7 +96,7 @@ window.Worklog = window.Worklog || {};
     const k = snapshot.kpis;
     document.getElementById("kpis").innerHTML = [
       kpi("Models", k.models),
-      kpi("Slices scored", k.slices, "good"),
+      kpi("Slices", k.slices, "good"),
       kpi("Pending metrics", k.pending, k.pending ? "warn" : ""),
       kpi("Failed runs", k.failed, k.failed ? "bad" : ""),
       kpi("Benchmark families", k.families),

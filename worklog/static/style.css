@@ -160,15 +160,28 @@ input[type="search"] { min-width: 210px; }
 
 .matrix { overflow: auto; max-height: 68vh; }
 .matrix-block + .matrix-block { border-top: 1px solid var(--line); }
+.matrix-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px 8px;
+}
 .matrix-title {
   margin: 0;
-  padding: 14px 18px 8px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: .06em;
   text-transform: uppercase;
   color: var(--muted);
 }
+.metric-select {
+  min-width: 150px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+.unclassified { padding: 0 18px 16px; max-height: 300px; overflow: auto; }
 .star { color: var(--good); font-size: 10px; margin-left: 5px; }
 
 table.matrix-table { border-collapse: separate; border-spacing: 0; width: 100%; font-variant-numeric: tabular-nums; }
