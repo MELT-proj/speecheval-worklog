@@ -55,7 +55,13 @@ def make_log(
         "results": {
             "total_samples": samples,
             "completed_samples": completed,
-            "scores": [{"name": "asr_scorer" if task.startswith("asr") else "st_scorer", "metrics": metrics}],
+            "scores": [
+                {
+                    "name": "asr_scorer" if task.startswith("asr") else "st_scorer",
+                    # inspect serialises each metric as an object, not a bare number.
+                    "metrics": {name: {"name": name, "value": value} for name, value in metrics.items()},
+                }
+            ],
         },
     }
     if status == "success":

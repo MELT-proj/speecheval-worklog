@@ -107,6 +107,10 @@ def _flatten_metrics(scores: list[dict]) -> dict[str, float]:
     for score in scores:
         scorer = score.get("name") or "scorer"
         for name, value in (score.get("metrics") or {}).items():
+            # inspect serialises a metric as {"name": ..., "value": ...}; older
+            # logs in other tools may carry a bare number.
+            if isinstance(value, dict):
+                value = value.get("value")
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 continue
             key = f"{scorer}.{name}" if seen.get(name, 0) > 1 else name

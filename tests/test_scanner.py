@@ -19,6 +19,10 @@ def test_success_st_fields(tmp_path):
     assert run.status == "success" and run.finished == "2026-11-12T10:05:00+00:00"
 
 
+def test_metric_objects_are_unwrapped(tmp_path):
+    assert scan_run(make_log(tmp_path, metrics={"corpus_bleu": 12.5})).metrics["corpus_bleu"] == 12.5
+
+
 def test_pending_post_scorer(tmp_path):
     p = make_log(tmp_path, post_scorers=("melteval/rescore.py@metricx_scorer",), metrics={"corpus_bleu": 24.5})
     assert scan_run(p).pending == ("metricx_scorer",)
