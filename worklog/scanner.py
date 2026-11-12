@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import math
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -20,6 +21,10 @@ from .config import Config
 #: ``dataset_id`` / slice ids end in ``-<src>_<tgt>``, optionally with a region
 #: code on either side (``zh-CN``) and a ``-dev``/``-test`` suffix.
 _PAIR_RE = re.compile(r"-([a-z]{2}(?:-[A-Z]{2})?)_([a-z]{2}(?:-[A-Z]{2})?)(?:-(?:dev|test))?$")
+
+
+class UnreadableLog(Exception):
+    """A file under a campaign's ``logs/`` that is not valid JSON (yet); retried next scan."""
 
 
 @dataclass(frozen=True)
@@ -112,27 +117,58 @@ def _flatten_metrics(scores: list[dict]) -> dict[str, float]:
                 value = value.get("value")
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 continue
+            if not math.isfinite(value):
+                continue
             key = f"{scorer}.{name}" if seen.get(name, 0) > 1 else name
             out[key] = float(value)
     return out
 
 
+#: Task prefixes the speech task writes into ``eval.task``; used to recover the
+#: task of a log that predates the ``melteval_task`` metadata.
+_TASK_PREFIXES = ("chunked_asr", "chunked_st", "audio_mcq", "audio_chat", "asr", "st")
+
+
+def _task_from_eval(task_name: str) -> str:
+    for prefix in _TASK_PREFIXES:
+        if task_name.startswith(f"speech-{prefix}-") or task_name == f"speech-{prefix}":
+            return prefix
+    return ""
+
+
+def _path_parts(path: Path) -> tuple[str, str, str]:
+    """``(campaign, benchmark, slice)`` from ``<root>/<campaign>/logs/<model>/<benchmark>/<slice>/``."""
+    parts = Path(path).parts
+    if "logs" in parts:
+        index = parts.index("logs")
+        campaign = parts[index - 1] if index >= 1 else ""
+        benchmark = parts[index + 2] if len(parts) > index + 2 else ""
+        slice_id = parts[index + 3] if len(parts) > index + 3 else ""
+        return campaign, benchmark, slice_id
+    return "", "", ""
+
+
 def scan_run(path: Path) -> ScannedRun | None:
-    """Read one log; ``None`` when it is not a speech log, or not readable yet."""
+    """Read one log; ``None`` for a file that is not a speech log or not stable while read."""
+    before = Path(path).stat()
     try:
         body = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+    except (OSError, ValueError) as error:
+        raise UnreadableLog(str(path)) from error
+    after = Path(path).stat()
+    if (before.st_mtime_ns, before.st_size) != (after.st_mtime_ns, after.st_size):
+        return None  # rewritten while reading: the next scan gets a whole one
     ev = body.get("eval")
     if not isinstance(ev, dict):
         return None
     meta = ev.get("metadata") or {}
-    benchmark = meta.get("melteval_benchmark")
-    if not benchmark:
+    path_campaign, path_benchmark, path_slice = _path_parts(path)
+    task = str(meta.get("melteval_task") or "") or _task_from_eval(str(ev.get("task") or ""))
+    benchmark = str(meta.get("melteval_benchmark") or path_benchmark or "")
+    if not benchmark or not task:
         return None
 
-    task = str(meta.get("melteval_task") or "")
-    slice_id = str(meta.get("melteval_slice") or "")
+    slice_id = str(meta.get("melteval_slice") or path_slice or "")
     args = ev.get("task_args") or {}
     sample_meta = (body.get("samples") or [{}])[0].get("metadata") if body.get("samples") else None
     src, tgt = parse_pair(args.get("dataset_id"), slice_id, task, sample_meta)
@@ -145,16 +181,23 @@ def scan_run(path: Path) -> ScannedRun | None:
     results = body.get("results") or {}
     scores = results.get("scores") or []
     metrics = _flatten_metrics(scores)
-    got_scorers = {s.get("name") for s in scores}
-    declared = [part.split("@")[-1] for part in str(meta.get("melteval_post_scorers") or "").split(",") if part]
+    got_scorers = {str(s.get("name") or "").split("/")[-1] for s in scores}
+    raw_declared = meta.get("melteval_post_scorers")
+    if isinstance(raw_declared, str):
+        declared = raw_declared.split(",")
+    elif isinstance(raw_declared, list):
+        declared = raw_declared
+    else:
+        declared = []
+    declared = [str(part).strip().split("@")[-1] for part in declared if str(part).strip()]
     pending = tuple(name for name in declared if name not in got_scorers)
 
-    stat = Path(path).stat()
+    stat = after
     return ScannedRun(
         path=str(Path(path).resolve()),
         mtime_ns=stat.st_mtime_ns,
         size=stat.st_size,
-        campaign=str(meta.get("melteval_campaign") or ""),
+        campaign=str(meta.get("melteval_campaign") or path_campaign or ""),
         model=str(meta.get("melteval_model") or ev.get("model") or "unknown"),
         benchmark=str(benchmark),
         slice=slice_id,

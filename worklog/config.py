@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -75,7 +74,7 @@ def _expand(value: str | Path) -> Path:
     return Path(os.path.expanduser(os.path.expandvars(str(value))))
 
 
-def load_config(path: Path | None = None, overrides: dict[str, Any] | None = None) -> Config:
+def load_config(path: Path | None = None, overrides: dict[str, object] | None = None) -> Config:
     """Read *path* (default: the repo's ``worklog.yaml``) and merge *overrides*.
 
     Environment variables in ``roots`` and ``cache`` are expanded, so a path can
@@ -85,18 +84,21 @@ def load_config(path: Path | None = None, overrides: dict[str, Any] | None = Non
         ValueError: On an unknown ``aggregate``, a family direction other than
             ``xen``/``enx``, or a headline naming an undefined metric.
     """
-    raw: dict[str, Any] = {}
+    if path is not None and not Path(path).exists():
+        raise FileNotFoundError(f"config not found: {path}")
+    raw: dict[str, object] = {}
     if DEFAULT_PATH.exists():
         raw = yaml.safe_load(DEFAULT_PATH.read_text(encoding="utf-8")) or {}
     if path is not None and Path(path).exists() and Path(path).resolve() != DEFAULT_PATH.resolve():
         raw.update(yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {})
+    overrides_cache = (overrides or {}).get("cache")
     if overrides:
         raw.update({k: v for k, v in overrides.items() if v is not None})
 
     roots = tuple(_expand(p) for p in raw.get("roots") or ())
     include = tuple(raw.get("include") or ("*",))
     ignore = tuple(raw.get("ignore") or ())
-    cache = _expand(raw.get("cache") or DEFAULT_CACHE)
+    cache = _expand(overrides_cache or os.environ.get("WORKLOG_CACHE") or raw.get("cache") or DEFAULT_CACHE)
     aggregate = str(raw.get("aggregate") or "macro")
     if aggregate not in _AGGREGATES:
         raise ValueError(f"aggregate must be one of {sorted(_AGGREGATES)}, got {aggregate!r}")

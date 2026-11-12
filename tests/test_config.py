@@ -33,3 +33,15 @@ def test_partial_file_keeps_shipped_defaults(tmp_path):
     p.write_text("roots: [/x]\n")
     cfg = load_config(p)
     assert cfg.families and cfg.headline_metric("asr").label == "WER"
+
+
+def test_worklog_cache_env_beats_yaml(monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKLOG_CACHE", str(tmp_path / "env.sqlite"))
+    assert load_config().cache == tmp_path / "env.sqlite"
+
+
+def test_missing_explicit_config_raises(tmp_path):
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        load_config(tmp_path / "nope.yaml")

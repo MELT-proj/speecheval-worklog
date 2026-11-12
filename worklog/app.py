@@ -13,7 +13,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from .config import Config, load_config
 from .scanner import ScannedRun
-from .store import Store
+from .store import Store, open_store
 from .sync import sync_store
 from .views import build_snapshot
 
@@ -51,6 +51,7 @@ def create_app(config: Config, store: Store, scan: Callable[[], None] | None = N
         return build_snapshot(
             config, store.winning(), store.history(limit=50), store.version(), _now(),
             failed=store.count(status="error"),
+            warnings=int(store.get_meta("warnings") or 0),
         )
 
     @app.get("/")
@@ -109,6 +110,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache", type=Path, help="SQLite cache path")
     parser.add_argument("--port", type=int)
     parser.add_argument("--host")
+    parser.add_argument("--interval", type=int)
     return parser
 
 
@@ -122,14 +124,16 @@ def main(argv: list[str] | None = None) -> None:
             "cache": args.cache,
             "port": args.port,
             "host": args.host,
+            "interval_seconds": args.interval,
         },
     )
-    store = Store(config.cache)
+    store = open_store(config.cache, fallback_dir=Path.cwd() / ".cache")
     lock = threading.Lock()
 
     def scan_once() -> None:
         with lock:
-            sync_store(config, store)
+            result = sync_store(config, store)
+            store.set_meta("warnings", str(result.warnings))
 
     app = create_app(config, store, scan=scan_once)
 

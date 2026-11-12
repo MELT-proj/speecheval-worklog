@@ -28,10 +28,21 @@ def make_log(
     completed=10,
     created="2026-11-12T10:00:00+00:00",
     finished="2026-11-12T10:05:00+00:00",
+    legacy=False,
+    extra_scorers=(),
+    base=None,
 ) -> Path:
     """Write a minimal inspect-like log and return its absolute path."""
     if metrics is None:
         metrics = {"corpus_bleu": 24.5}
+    meta = {
+        "melteval_model": model,
+        "melteval_benchmark": benchmark,
+        "melteval_slice": slice_id,
+        "melteval_task": task,
+        "melteval_campaign": campaign,
+        "melteval_post_scorers": list(post_scorers) if isinstance(post_scorers, list) else ",".join(post_scorers),
+    }
     ev = {
         "eval_id": slice_id,
         "created": created,
@@ -39,14 +50,7 @@ def make_log(
         "task_args": {"dataset_id": dataset_id, "lang": lang},
         "dataset": {"name": benchmark, "location": "/nowhere", "samples": samples, "sample_ids": []},
         "model": eval_model,
-        "metadata": {
-            "melteval_model": model,
-            "melteval_benchmark": benchmark,
-            "melteval_slice": slice_id,
-            "melteval_task": task,
-            "melteval_campaign": campaign,
-            "melteval_post_scorers": ",".join(post_scorers),
-        },
+        "metadata": {} if legacy else meta,
     }
     body = {
         "version": 2,
@@ -61,7 +65,7 @@ def make_log(
                     # inspect serialises each metric as an object, not a bare number.
                     "metrics": {name: {"name": name, "value": value} for name, value in metrics.items()},
                 }
-            ],
+            ] + [{"name": name, "metrics": {}} for name in extra_scorers],
         },
     }
     if status == "success":
@@ -73,7 +77,7 @@ def make_log(
     else:
         body["samples"] = []
 
-    folder = Path(tmp_path) / "logs" / model / benchmark / slice_id
+    folder = Path(base or tmp_path) / "logs" / model / benchmark / slice_id
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{created.replace(':', '-')}.json"
     path.write_text(json.dumps(body))

@@ -43,9 +43,8 @@ window.Worklog = window.Worklog || {};
     return d.toLocaleString();
   };
 
+  const ENTITIES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   W.escape = function (text) {
-    const div = document.createElement("div");
-    div.textContent = text === null || text === undefined ? "" : String(text);
-    return div.innerHTML;
+    return String(text === null || text === undefined ? "" : text).replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
   };
 })(window.Worklog);

@@ -14,7 +14,8 @@ re-scoring anything, re-reading audio, or needing the evaluation harness.
 ## What it is, and is not
 
 - Reads `*.json` inspect logs under one or more **campaign roots**. A log is
-  recognised by its `eval.metadata.melteval_*` block; anything else is ignored.
+  recognised by its `eval.metadata.melteval_*` block (or a `speech-*` task, for
+  older logs); anything else is ignored. `results/*.csv` is never read.
 - Caches the extraction in SQLite, keyed by path + mtime + size, so a rescan is
   cheap and a new log appears without restarting.
 - **Read-only.** The only write is that cache. There is no editing, no notes, no
@@ -63,6 +64,10 @@ a new benchmark: add its `melteval_benchmark` id to a family's `benchmarks` (and
 set `direction: xen|enx` if one benchmark carries both directions, as
 EuroparlST does). No code change.
 
+Each table has its own **metric selector** (BLEU, chrF, spBLEU, MetricX, …),
+and slices whose benchmark is not in `worklog.yaml` are listed under
+**Unclassified** with their log path instead of vanishing.
+
 The matrix cell is the **macro average of the per-slice values** for that
 model and family (or sample-weighted with `aggregate: weighted`), labelled with
 `scored/present`. The drill-down shows the per-slice corpus figures, which are
@@ -93,8 +98,8 @@ export LD_LIBRARY_PATH=$(find /tmp/opencode/pwlibs -type d -name '*-linux-gnu' |
 pytest tests -q
 ```
 
-Front-end libraries are vendored under `worklog/static/vendor/` (no CDN at
-runtime); `scripts/vendor.sh` re-downloads the pinned versions.
+ECharts is vendored under `worklog/static/vendor/` (no CDN at runtime);
+`scripts/vendor.sh` re-downloads the pinned version.
 
 ## Layout
 

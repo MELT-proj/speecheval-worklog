@@ -10,6 +10,7 @@ def test_snapshot_shape(client, store):
     assert set(body) == {
         "version",
         "generated_at",
+        "aggregate",
         "kpis",
         "filters",
         "model_families",
@@ -42,3 +43,12 @@ def test_run_detail_and_missing(client, store):
 
 def test_health(client):
     assert client.get("/api/health").get_json()["ok"] is True
+
+
+def test_refresh_invokes_the_scan_callback(cfg, store):
+    from worklog.app import create_app
+
+    calls = []
+    client = create_app(cfg, store, scan=lambda: calls.append(1)).test_client()
+    assert client.post("/api/refresh").status_code == 200
+    assert calls == [1]

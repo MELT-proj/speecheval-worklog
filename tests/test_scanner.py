@@ -40,10 +40,15 @@ def test_unrelated_json_is_ignored(tmp_path):
     assert scan_run(p) is None
 
 
-def test_half_written_file_is_ignored(tmp_path):
+def test_half_written_file_raises_unreadable(tmp_path):
+    import pytest
+
+    from worklog.scanner import UnreadableLog
+
     p = tmp_path / "broken.json"
     p.write_text('{"eval": {"task":')
-    assert scan_run(p) is None
+    with pytest.raises(UnreadableLog):
+        scan_run(p)
 
 
 def test_region_codes_and_missing_task_args(tmp_path):
@@ -74,3 +79,31 @@ def test_language_field_only_for_asr(tmp_path):
         )
     )
     assert asr.lang == "en"
+
+
+def test_list_shaped_post_scorers_that_already_ran(tmp_path):
+    p = make_log(
+        tmp_path,
+        post_scorers=["melteval/rescore.py@metricx_scorer", "melteval/rescore.py@comet_scorer"],
+        extra_scorers=("metricx_scorer",),
+    )
+    assert scan_run(p).pending == ("comet_scorer",)
+
+
+def test_non_finite_metrics_are_dropped(tmp_path):
+    p = make_log(tmp_path, metrics={"corpus_bleu": float("nan"), "corpus_chrf": float("inf")})
+    assert scan_run(p).metrics == {}
+
+
+def test_legacy_log_without_metadata(tmp_path):
+    base = tmp_path / "campaign-a"
+    p = make_log(base, legacy=True, benchmark="fleurs24-st-xen-dev", slice_id="st-fleurs-de_en")
+    run = scan_run(p)
+    assert run is not None
+    assert (run.campaign, run.benchmark, run.slice, run.task) == (
+        "campaign-a",
+        "fleurs24-st-xen-dev",
+        "st-fleurs-de_en",
+        "st",
+    )
+    assert (run.src, run.tgt) == ("de", "en")

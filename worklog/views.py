@@ -103,6 +103,7 @@ def build_snapshot(
     version: str,
     now: str,
     failed: int | None = None,
+    warnings: int = 0,
 ) -> dict:
     """The whole view payload: slices, server-side matrix, filters, KPIs and feed."""
     slices = [_slice_row(config, run) for run in runs]
@@ -126,19 +127,29 @@ def build_snapshot(
             if family.task == task
             for model in models
         ]
-        matrix[task] = {"metric": rule_name, "label": rule.label, "lower": rule.lower, "cells": cells}
+        matrix[task] = {
+            "metric": rule_name,
+            "label": rule.label,
+            "lower": rule.lower,
+            "metrics": [
+                {"name": name, "label": metric.label, "lower": metric.lower}
+                for name, metric in config.metrics.items()
+            ],
+            "cells": cells,
+        }
 
     languages = sorted({lang for row in slices for lang in (row["lang"], row["src"], row["tgt"]) if lang})
     return {
         "version": version,
         "generated_at": now,
+        "aggregate": config.aggregate,
         "kpis": {
             "models": len(models),
             "families": len(config.families),
             "slices": len(slices),
             "pending": sum(1 for row in slices if row["pending"]),
             "failed": failed if failed is not None else sum(1 for row in feed if row.status == "error"),
-            "warnings": 0,
+            "warnings": warnings,
         },
         "filters": {
             "campaigns": sorted({row["campaign"] for row in slices}),

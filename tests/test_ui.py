@@ -25,14 +25,32 @@ from .helpers import make_log
 
 @pytest.fixture
 def live_server(tmp_path):
-    make_log(tmp_path, slice_id="st-fleurs-de_en", src="de", tgt="en", metrics={"corpus_bleu": 20.0})
+    scorer = ("melteval/rescore.py@metricx_scorer",)
+    make_log(
+        tmp_path,
+        slice_id="st-fleurs-de_en",
+        src="de",
+        tgt="en",
+        metrics={"corpus_bleu": 20.0, "corpus_chrf": 40.0},
+        post_scorers=scorer,
+    )
     make_log(
         tmp_path,
         slice_id="st-fleurs-fr_en",
         src="fr",
         tgt="en",
-        metrics={"corpus_bleu": 30.0},
+        metrics={"corpus_bleu": 30.0, "corpus_chrf": 60.0},
         created="2026-11-12T11:00:00+00:00",
+        post_scorers=scorer,
+    )
+    make_log(
+        tmp_path,
+        benchmark="something-new",
+        slice_id="st-mystery-en",
+        src="xx",
+        tgt="en",
+        metrics={"corpus_bleu": 1.0},
+        created="2026-11-12T12:00:00+00:00",
     )
     make_log(
         tmp_path,
@@ -94,11 +112,49 @@ def test_page_boots_with_kpis_heatmap_feed_and_filters(live_server, tmp_path):
         assert page.locator("#filter-language").count() == 1
         page.screenshot(path=str(tmp_path / "page-default.png"), full_page=True)
 
+        assert "UNCLASSIFIED" in page.inner_text("#matrix").upper()
+
         page.select_option("#filter-language", "de")
         page.wait_for_function("() => document.querySelector('#matrix').innerText.includes('20.00')")
         assert "language=de" in page.url
+
+        page.select_option("#metric-st", "corpus_chrf")
+        page.wait_for_function("() => document.querySelector('#matrix').innerText.includes('40.00')")
+        assert "metric-st=corpus_chrf" in page.url
+
+        page.select_option("#metric-st", "metricx")
+        page.wait_for_function("() => document.querySelector('#matrix').innerText.includes('…')")
         page.screenshot(path=str(tmp_path / "page.png"), full_page=True)
 
         page.click("#refresh")
         page.wait_for_function("() => document.getElementById('refresh').textContent === 'Refresh'")
         browser.close()
+
+
+def test_asr_only_campaign_gets_a_heatmap(tmp_path):
+    make_log(
+        tmp_path,
+        benchmark="voxpopuli-dev",
+        slice_id="asr-en",
+        task="asr",
+        dataset_id="voxpopuli-en-dev",
+        src=None,
+        tgt=None,
+        lang="en",
+        metrics={"corpus_wer_raw": 0.1},
+    )
+    cfg = load_config(overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")})
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": 1500, "height": 1200})
+            page.goto(f"http://127.0.0.1:{server.server_port}")
+            page.wait_for_selector("#heatmap canvas")
+            assert "WER" in page.inner_text("#heatmap-hint")
+            browser.close()
+    finally:
+        server.shutdown()

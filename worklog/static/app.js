@@ -15,16 +15,23 @@ window.Worklog = window.Worklog || {};
 
   let snapshot = null;
   let lastRefresh = null;
-  const state = {};
+  const state = { metric: {} };
 
   function readHash() {
     const params = new URLSearchParams(location.hash.replace(/^#/, ""));
     for (const [key] of FILTERS) state[key] = params.get(key) || "";
+    state.metric = {};
+    for (const [key, value] of params.entries()) {
+      if (key.startsWith("metric-") && value) state.metric[key.slice("metric-".length)] = value;
+    }
   }
 
   function writeHash() {
     const params = new URLSearchParams();
     for (const [key] of FILTERS) if (state[key]) params.set(key, state[key]);
+    for (const [task, name] of Object.entries(state.metric || {})) {
+      if (name) params.set(`metric-${task}`, name);
+    }
     const hash = params.toString();
     history.replaceState(null, "", hash ? `#${hash}` : location.pathname + location.search);
   }
@@ -73,6 +80,7 @@ window.Worklog = window.Worklog || {};
     reset.textContent = "Reset";
     reset.addEventListener("click", () => {
       for (const [key] of FILTERS) state[key] = "";
+      state.metric = {};
       writeHash();
       buildFilters();
       renderAll();
@@ -119,6 +127,7 @@ window.Worklog = window.Worklog || {};
     if (response.status === 204) return false;
     if (!response.ok) throw new Error(`snapshot: HTTP ${response.status}`);
     snapshot = await response.json();
+    state.aggregate = snapshot.aggregate || "macro";
     lastRefresh = new Date();
     renderAll();
     return true;
@@ -159,6 +168,14 @@ window.Worklog = window.Worklog || {};
     document.getElementById("refresh").addEventListener("click", refreshNow);
     setInterval(poll, POLL_MS);
   }
+
+  W.app = {
+    setMetric(task, name) {
+      state.metric[task] = name;
+      writeHash();
+      renderAll();
+    },
+  };
 
   document.addEventListener("DOMContentLoaded", boot);
 })(window.Worklog);

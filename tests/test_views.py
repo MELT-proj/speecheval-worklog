@@ -43,3 +43,16 @@ def test_pending_only_cell(cfg):
 def test_explicit_failed_count_overrides_feed(cfg):
     snap = build_snapshot(cfg, [], [], "v1", "now", failed=9)
     assert snap["kpis"]["failed"] == 9
+
+
+def test_snapshot_exposes_aggregate_and_metric_choices(cfg):
+    snap = build_snapshot(cfg, [run()], [], "v1", "now")
+    assert snap["aggregate"] == cfg.aggregate
+    names = {m["name"] for m in snap["matrix"]["st"]["metrics"]}
+    assert {"corpus_bleu", "corpus_chrf", "metricx"} <= names
+    assert snap["matrix"]["st"]["metric"] == "corpus_bleu"
+
+
+def test_warnings_are_passed_through(cfg):
+    snap = build_snapshot(cfg, [], [], "v1", "now", warnings=4)
+    assert snap["kpis"]["warnings"] == 4

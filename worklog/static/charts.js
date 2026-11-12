@@ -23,9 +23,17 @@ window.Worklog = window.Worklog || {};
     );
   }
 
-  function activeTask(snapshot, state) {
+  function taskForFamily(snapshot, family) {
+    for (const [task, matrix] of Object.entries(snapshot.matrix)) {
+      if (matrix.cells.some((cell) => cell.family === family)) return task;
+    }
+    return null;
+  }
+
+  function activeTask(snapshot, state, slices) {
+    if (state.family) return taskForFamily(snapshot, state.family) || "st";
     if (state.task) return state.task;
-    return snapshot.matrix.st ? "st" : "asr";
+    return ["asr", "st"].find((task) => slices.some((slice) => slice.task === task)) || "st";
   }
 
   function activeFamily(snapshot, state, slices, task) {
@@ -36,15 +44,28 @@ window.Worklog = window.Worklog || {};
     return first || snapshot.filters.families[0];
   }
 
+  function selectedMetric(snapshot, state, task) {
+    return (state.metric && state.metric[task]) || snapshot.matrix[task].metric;
+  }
+
   function render(snapshot, state) {
     const el = document.getElementById("heatmap");
     const hint = document.getElementById("heatmap-hint");
     if (!el) return;
     const slices = visible(snapshot, state);
-    const task = activeTask(snapshot, state);
+    const task = activeTask(snapshot, state, slices);
+    if (!snapshot.matrix[task]) {
+      el.innerHTML = '<div class="placeholder">No heatmap data for the current filters.</div>';
+      return;
+    }
+    const metric = selectedMetric(snapshot, state, task);
+    const rule = (snapshot.matrix[task].metrics || []).find((item) => item.name === metric) || {
+      name: metric,
+      label: metric,
+      lower: snapshot.matrix[task].lower,
+    };
     const family = activeFamily(snapshot, state, slices, task);
-    const matrix = snapshot.matrix[task];
-    if (!matrix || !family) {
+    if (!family) {
       el.innerHTML = '<div class="placeholder">No heatmap data for the current filters.</div>';
       return;
     }
@@ -63,10 +84,9 @@ window.Worklog = window.Worklog || {};
     let min = Infinity;
     let max = -Infinity;
     rows.forEach((row) => {
-      const value = row.metrics[matrix.metric];
+      const value = row.metrics[metric];
       if (!Number.isFinite(value)) return;
-      const language = languageOf(row);
-      const x = languages.indexOf(language);
+      const x = languages.indexOf(languageOf(row));
       const y = models.indexOf(row.model);
       if (x < 0 || y < 0) return;
       data.push([x, y, value]);
@@ -78,8 +98,8 @@ window.Worklog = window.Worklog || {};
     el.style.height = `${Math.max(260, 46 + models.length * 38)}px`;
     if (chart) chart.dispose();
     chart = echarts.init(el, null, { renderer: "canvas" });
-    const percent = /(^|[._])(wer|cer)($|_)/.test(matrix.metric) || matrix.metric.includes("wer") || matrix.metric.includes("cer");
-    const colors = matrix.lower
+    const percent = metric.includes("wer") || metric.includes("cer");
+    const colors = rule.lower
       ? ["#1f7a5a", "#3ddc97", "#f4b942", "#ff6b6b"]
       : ["#1d3557", "#2a6f97", "#4cc9f0", "#3ddc97"];
     chart.setOption({
@@ -89,8 +109,8 @@ window.Worklog = window.Worklog || {};
         formatter: (item) => {
           const model = models[item.value[1]];
           const language = languages[item.value[0]];
-          const value = percent ? `${(item.value[2] * 100).toFixed(2)}` : item.value[2].toFixed(2);
-          return `<b>${W.escape(model)}</b><br/>${W.escape(language)} · ${matrix.label}: ${value}`;
+          const value = percent ? (item.value[2] * 100).toFixed(2) : item.value[2].toFixed(2);
+          return `<b>${W.escape(model)}</b><br/>${W.escape(language)} · ${W.escape(rule.label)}: ${value}`;
         },
       },
       grid: { left: 150, right: 24, top: 18, bottom: 78 },
@@ -137,7 +157,9 @@ window.Worklog = window.Worklog || {};
         },
       ],
     });
-    if (hint) hint.textContent = `${family} · ${matrix.label}${percent ? " (%)" : ""}${matrix.lower ? " · lower is better" : ""}`;
+    if (hint) {
+      hint.textContent = `${family} · ${rule.label}${percent ? " (%)" : ""}${rule.lower ? " · lower is better" : ""}`;
+    }
   }
 
   window.addEventListener("resize", () => chart && chart.resize());

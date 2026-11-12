@@ -42,6 +42,16 @@ _RUN_COLUMNS = (
 )
 
 
+def open_store(path: Path, *, fallback_dir: Path) -> Store:
+    """Open the cache, falling back to ``<fallback_dir>/worklog.sqlite`` when *path* is unusable."""
+    try:
+        return Store(path)
+    except OSError:
+        fallback = Path(fallback_dir) / "worklog.sqlite"
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        return Store(fallback)
+
+
 class Store:
     """A single-file cache; every method opens its own connection, so it is safe to call from a thread."""
 
@@ -125,6 +135,19 @@ class Store:
             row = conn.execute("SELECT value FROM meta WHERE key='version'").fetchone()
         return row["value"] if row else "empty"
 
+    def set_meta(self, key: str, value: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
+            conn.commit()
+
+    def get_meta(self, key: str, default: str = "") -> str:
+        with self._connect() as conn:
+            row = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else default
+
     def count(self, *, status: str | None = None) -> int:
         """Number of cached runs, optionally only one status (the KPI uses ``error``)."""
         query = "SELECT COUNT(*) AS n FROM runs" + (" WHERE status=?" if status else "")
@@ -193,11 +216,15 @@ class Store:
         return self._load(order="path")
 
     def winning(self) -> list[ScannedRun]:
-        """Newest successful log per (campaign, model, benchmark, slice)."""
-        winners: dict[tuple[str, str, str, str], ScannedRun] = {}
+        """Newest successful log per (model, benchmark, slice), mirroring evaluate.py."""
+        winners: dict[tuple[str, str, str], ScannedRun] = {}
         for item in self._load(where="WHERE status='success'"):
-            key = (item.campaign, item.model, item.benchmark, item.slice)
-            if key not in winners or (item.created or "") > (winners[key].created or ""):
+            key = (item.model, item.benchmark, item.slice)
+            current = winners.get(key)
+            if current is None or ((item.created or ""), item.mtime_ns) > (
+                (current.created or ""),
+                current.mtime_ns,
+            ):
                 winners[key] = item
         return sorted(winners.values(), key=lambda r: (r.model, r.benchmark, r.slice))
 

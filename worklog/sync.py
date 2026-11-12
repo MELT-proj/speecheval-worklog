@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from .config import Config
-from .scanner import ScannedRun, iter_log_paths, scan_run
+from .scanner import ScannedRun, UnreadableLog, iter_log_paths, scan_run
 from .store import Store
 
 
-def sync_store(config: Config, store: Store) -> int:
+@dataclass(frozen=True)
+class SyncResult:
+    """What one pass did: how many logs it parsed, and how many were unreadable."""
+
+    parsed: int
+    warnings: int
+
+
+def sync_store(config: Config, store: Store) -> SyncResult:
     """Bring *store* in line with the logs on disk; return how many were parsed.
 
     Unchanged files are recognised by ``(path, mtime_ns, size)`` and reused from
@@ -19,18 +29,29 @@ def sync_store(config: Config, store: Store) -> int:
     incoming: list[ScannedRun] = []
     seen: set[str] = set()
     parsed = 0
+    warnings = 0
     for path in iter_log_paths(config):
         resolved = str(path.resolve())
         if resolved in seen:
             continue
         seen.add(resolved)
-        stat = path.stat()
+        try:
+            stat = path.stat()
+        except OSError:
+            if "logs" in path.parts:
+                warnings += 1
+            continue
         if known.get(resolved) == (stat.st_mtime_ns, stat.st_size):
             continue
         parsed += 1
-        row = scan_run(path)
+        try:
+            row = scan_run(path)
+        except UnreadableLog:
+            if "logs" in path.parts:
+                warnings += 1
+            continue
         if row is not None:
             incoming.append(row)
     incoming.extend(row for row in store.all() if row.path in seen and row.path not in {r.path for r in incoming})
     store.sync(incoming)
-    return parsed
+    return SyncResult(parsed=parsed, warnings=warnings)
