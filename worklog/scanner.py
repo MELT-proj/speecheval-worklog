@@ -17,7 +17,6 @@ from pathlib import Path
 
 from .config import Config
 
-
 #: ``dataset_id`` / slice ids end in ``-<src>_<tgt>``, optionally with a region
 #: code on either side (``zh-CN``) and a ``-dev``/``-test`` suffix.
 _PAIR_RE = re.compile(r"-([a-z]{2}(?:-[A-Z]{2})?)_([a-z]{2}(?:-[A-Z]{2})?)(?:-(?:dev|test))?$")

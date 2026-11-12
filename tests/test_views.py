@@ -28,7 +28,7 @@ def test_matrix_cell_states(cfg):
             metrics={"corpus_bleu": 30.0}, pending=("metricx_scorer",)),
     ]
     snap = build_snapshot(cfg, runs, [], "v1", "now")
-    cell = [c for c in snap["matrix"]["st"]["cells"] if c["family"] == "FLEURS XtoEN"][0]
+    cell = next(c for c in snap["matrix"]["st"]["cells"] if c["family"] == "FLEURS XtoEN")
     assert cell["value"] == 25.0 and cell["n"] == 2 and cell["total"] == 2
     assert snap["kpis"]["pending"] == 1
 
@@ -36,7 +36,7 @@ def test_matrix_cell_states(cfg):
 def test_pending_only_cell(cfg):
     runs = [run(metrics={}, pending=("metricx_scorer",))]
     snap = build_snapshot(cfg, runs, [], "v1", "now")
-    cell = [c for c in snap["matrix"]["st"]["cells"] if c["family"] == "FLEURS XtoEN"][0]
+    cell = next(c for c in snap["matrix"]["st"]["cells"] if c["family"] == "FLEURS XtoEN")
     assert cell["status"] == "pending" and cell["value"] is None
 
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from .config import Config
 from .scanner import ScannedRun, iter_log_paths, scan_run
 from .store import Store

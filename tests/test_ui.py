@@ -13,14 +13,14 @@ import threading
 import pytest
 
 sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
-from werkzeug.serving import make_server  # noqa: E402
+from werkzeug.serving import make_server
 
-from worklog.app import create_app  # noqa: E402
-from worklog.config import load_config  # noqa: E402
-from worklog.scanner import iter_log_paths, scan_run  # noqa: E402
-from worklog.store import Store  # noqa: E402
+from worklog.app import create_app
+from worklog.config import load_config
+from worklog.scanner import iter_log_paths, scan_run
+from worklog.store import Store
 
-from .helpers import make_log  # noqa: E402
+from .helpers import make_log
 
 
 @pytest.fixture

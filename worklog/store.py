@@ -15,7 +15,6 @@ from pathlib import Path
 
 from .scanner import ScannedRun
 
-
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -13,8 +13,8 @@ from flask import Flask, jsonify, request, send_from_directory
 
 from .config import Config, load_config
 from .scanner import ScannedRun
-from .sync import sync_store
 from .store import Store
+from .sync import sync_store
 from .views import build_snapshot
 
 
@@ -137,7 +137,7 @@ def main(argv: list[str] | None = None) -> None:
         while True:
             try:
                 scan_once()
-            except Exception:  # noqa: BLE001 - a broken root must not kill the dashboard
+            except Exception:
                 app.logger.exception("scan failed")
             time.sleep(config.interval_seconds)
 
