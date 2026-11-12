@@ -20,6 +20,8 @@ re-scoring anything, re-reading audio, or needing the evaluation harness.
   cheap and a new log appears without restarting.
 - **Read-only.** The only write is that cache. There is no editing, no notes, no
   re-scoring, no sample browser (the log path and `inspect view` cover that).
+- Light and dark themes, remembered per browser (the toggle sits in the header;
+  the first visit follows the OS preference).
 - **No authentication.** Bind loopback by default; share deliberately (below).
 
 ## Install and run

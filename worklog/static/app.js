@@ -158,6 +158,10 @@ window.Worklog = window.Worklog || {};
   }
 
   async function boot() {
+    W.theme.init();
+    window.addEventListener("worklog:theme", () => {
+      if (snapshot) renderAll();
+    });
     readHash();
     try {
       await load();

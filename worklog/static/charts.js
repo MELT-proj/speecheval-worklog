@@ -98,6 +98,12 @@ window.Worklog = window.Worklog || {};
     el.innerHTML = "";
     el.style.height = `${Math.max(260, 46 + models.length * 38)}px`;
     if (chart) chart.dispose();
+    const css = getComputedStyle(document.documentElement);
+    const ink = css.getPropertyValue("--muted").trim() || "#8b98a9";
+    const gridLine = css.getPropertyValue("--line").trim() || "#263041";
+    const panel = css.getPropertyValue("--panel").trim() || "#161b22";
+    const text = css.getPropertyValue("--text").trim() || "#e6edf3";
+    const pageBg = css.getPropertyValue("--bg").trim() || "#0f1216";
     chart = echarts.init(el, null, { renderer: "canvas" });
     const percent = metric.includes("wer") || metric.includes("cer");
     const colors = rule.lower
@@ -107,6 +113,9 @@ window.Worklog = window.Worklog || {};
       backgroundColor: "transparent",
       animationDuration: 350,
       tooltip: {
+        backgroundColor: panel,
+        borderColor: gridLine,
+        textStyle: { color: text },
         formatter: (item) => {
           const model = models[item.value[1]];
           const language = languages[item.value[0]];
@@ -118,15 +127,15 @@ window.Worklog = window.Worklog || {};
       xAxis: {
         type: "category",
         data: languages,
-        splitArea: { show: true, areaStyle: { color: ["transparent", "rgba(255,255,255,.015)"] } },
-        axisLabel: { color: "#8b98a9", fontSize: 11 },
-        axisLine: { lineStyle: { color: "#263041" } },
+        splitArea: { show: true, areaStyle: { color: ["transparent", "rgba(127,127,127,.06)"] } },
+        axisLabel: { color: ink, fontSize: 11 },
+        axisLine: { lineStyle: { color: gridLine } },
         axisTick: { show: false },
       },
       yAxis: {
         type: "category",
         data: models,
-        axisLabel: { color: "#8b98a9", fontSize: 11, fontFamily: "ui-monospace, monospace" },
+        axisLabel: { color: ink, fontSize: 11, fontFamily: "ui-monospace, monospace" },
         axisLine: { show: false },
         axisTick: { show: false },
       },
@@ -139,7 +148,7 @@ window.Worklog = window.Worklog || {};
         bottom: 8,
         itemWidth: 12,
         itemHeight: 90,
-        textStyle: { color: "#8b98a9", fontSize: 10 },
+        textStyle: { color: ink, fontSize: 10 },
         formatter: (value) => (percent ? (value * 100).toFixed(0) : value.toFixed(1)),
         inRange: { color: colors },
       },
@@ -153,7 +162,7 @@ window.Worklog = window.Worklog || {};
             fontSize: 10,
             formatter: (item) => (percent ? (item.value[2] * 100).toFixed(1) : item.value[2].toFixed(1)),
           },
-          itemStyle: { borderColor: "#0f1216", borderWidth: 2, borderRadius: 4 },
+          itemStyle: { borderColor: pageBg, borderWidth: 2, borderRadius: 4 },
           emphasis: { itemStyle: { borderColor: "#e6edf3", borderWidth: 1 } },
         },
       ],

@@ -44,6 +44,51 @@ window.Worklog = window.Worklog || {};
   };
 
   const ENTITIES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+  /* ---- theme ---------------------------------------------------------- */
+  const THEME_KEY = "worklog-theme";
+  const theme = (function () {
+    function current() {
+      return document.documentElement.dataset.theme || "dark";
+    }
+    function paintButton() {
+      const button = document.getElementById("theme-toggle");
+      if (!button) return;
+      const light = current() === "light";
+      const next = light ? "dark" : "light";
+      button.textContent = light ? "\u2600" : "\u263E";
+      button.title = `Switch to ${next} theme`;
+      button.setAttribute("aria-label", `Switch to ${next} theme`);
+    }
+    function set(name) {
+      document.documentElement.dataset.theme = name;
+      try {
+        localStorage.setItem(THEME_KEY, name);
+      } catch (error) {
+        /* private mode: the theme just will not persist */
+      }
+      paintButton();
+      window.dispatchEvent(new Event("worklog:theme"));
+    }
+    function toggle() {
+      set(current() === "dark" ? "light" : "dark");
+    }
+    function init() {
+      let saved = null;
+      try {
+        saved = localStorage.getItem(THEME_KEY);
+      } catch (error) {
+        saved = null;
+      }
+      const prefersLight =
+        window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+      set(saved || (prefersLight ? "light" : "dark"));
+      const button = document.getElementById("theme-toggle");
+      if (button) button.addEventListener("click", toggle);
+    }
+    return { init, set, toggle, current };
+  })();
+  W.theme = theme;
+
   W.escape = function (text) {
     return String(text === null || text === undefined ? "" : text).replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
   };

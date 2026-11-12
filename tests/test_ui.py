@@ -158,3 +158,28 @@ def test_asr_only_campaign_gets_a_heatmap(tmp_path):
             browser.close()
     finally:
         server.shutdown()
+
+
+def test_theme_toggle_switches_and_persists(live_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context()
+        page = context.new_page()
+        page.goto(live_server)
+        page.wait_for_selector("#theme-toggle")
+        initial = page.evaluate("document.documentElement.dataset.theme")
+        other = "dark" if initial == "light" else "light"
+        before = page.evaluate("getComputedStyle(document.querySelector('.kpi')).backgroundColor")
+
+        page.click("#theme-toggle")
+        page.wait_for_function(f"() => document.documentElement.dataset.theme === '{other}'")
+        after = page.evaluate("getComputedStyle(document.querySelector('.kpi')).backgroundColor")
+        assert after != before
+
+        page.reload()
+        page.wait_for_selector("#theme-toggle")
+        assert page.evaluate("document.documentElement.dataset.theme") == other
+
+        page.click("#theme-toggle")
+        page.wait_for_function(f"() => document.documentElement.dataset.theme === '{initial}'")
+        browser.close()
