@@ -12,7 +12,8 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 
 from .config import Config, load_config
-from .scanner import ScannedRun, iter_log_paths, scan_run
+from .scanner import ScannedRun
+from .sync import sync_store
 from .store import Store
 from .views import build_snapshot
 
@@ -47,7 +48,10 @@ def create_app(config: Config, store: Store, scan: Callable[[], None] | None = N
     app = Flask(__name__, static_folder="static", static_url_path="/static")
 
     def snapshot() -> dict:
-        return build_snapshot(config, store.winning(), store.history(limit=50), store.version(), _now())
+        return build_snapshot(
+            config, store.winning(), store.history(limit=50), store.version(), _now(),
+            failed=store.count(status="error"),
+        )
 
     @app.get("/")
     def index():
@@ -125,19 +129,17 @@ def main(argv: list[str] | None = None) -> None:
 
     def scan_once() -> None:
         with lock:
-            runs = [row for path in iter_log_paths(config) if (row := scan_run(path))]
-            store.sync(runs)
+            sync_store(config, store)
 
-    scan_once()
     app = create_app(config, store, scan=scan_once)
 
     def loop() -> None:
         while True:
-            time.sleep(config.interval_seconds)
             try:
                 scan_once()
             except Exception:  # noqa: BLE001 - a broken root must not kill the dashboard
                 app.logger.exception("scan failed")
+            time.sleep(config.interval_seconds)
 
     threading.Thread(target=loop, daemon=True, name="worklog-scanner").start()
     app.run(host=config.host, port=config.port, threaded=True)

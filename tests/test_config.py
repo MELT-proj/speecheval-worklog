@@ -26,3 +26,10 @@ def test_metric_lookup(tmp_path):
     assert cfg.headline_metric("asr").label == "WER"
     assert cfg.headline_metric("st") is None
     assert cfg.metric_names("asr") == ("corpus_wer_raw",)
+
+
+def test_partial_file_keeps_shipped_defaults(tmp_path):
+    p = tmp_path / "c.yaml"
+    p.write_text("roots: [/x]\n")
+    cfg = load_config(p)
+    assert cfg.families and cfg.headline_metric("asr").label == "WER"

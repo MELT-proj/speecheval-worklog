@@ -126,6 +126,21 @@ class Store:
             row = conn.execute("SELECT value FROM meta WHERE key='version'").fetchone()
         return row["value"] if row else "empty"
 
+    def count(self, *, status: str | None = None) -> int:
+        """Number of cached runs, optionally only one status (the KPI uses ``error``)."""
+        query = "SELECT COUNT(*) AS n FROM runs" + (" WHERE status=?" if status else "")
+        with self._connect() as conn:
+            row = conn.execute(query, (status,) if status else ()).fetchone()
+        return int(row["n"])
+
+    def stats(self) -> dict[str, tuple[int, int]]:
+        """``path -> (mtime_ns, size)`` for every cached log, for the incremental scan."""
+        with self._connect() as conn:
+            return {
+                row["path"]: (row["mtime_ns"], row["size"])
+                for row in conn.execute("SELECT path, mtime_ns, size FROM runs")
+            }
+
     def _load(self, where: str = "", params: Sequence = (), order: str = "created DESC, path") -> list[ScannedRun]:
         with self._connect() as conn:
             rows = conn.execute(f"SELECT {_RUN_COLUMNS} FROM runs {where} ORDER BY {order}", params).fetchall()

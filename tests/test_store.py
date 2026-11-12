@@ -30,3 +30,10 @@ def test_deleted_log_is_removed(tmp_path):
     s.sync([run("a.json"), run("b.json", slice="asr-en", task="asr")])
     s.sync([run("a.json")])
     assert [r.path for r in s.all()] == ["a.json"]
+
+
+def test_count_by_status(tmp_path):
+    s = Store(tmp_path / "w.sqlite")
+    s.sync([run("a.json"), run("b.json", status="error"), run("c.json", status="error")])
+    assert s.count(status="error") == 2
+    assert s.count() == 3

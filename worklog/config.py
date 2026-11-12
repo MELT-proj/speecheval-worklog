@@ -87,10 +87,10 @@ def load_config(path: Path | None = None, overrides: dict[str, Any] | None = Non
             ``xen``/``enx``, or a headline naming an undefined metric.
     """
     raw: dict[str, Any] = {}
-    if path is not None and Path(path).exists():
-        raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    elif path is None and DEFAULT_PATH.exists():
+    if DEFAULT_PATH.exists():
         raw = yaml.safe_load(DEFAULT_PATH.read_text(encoding="utf-8")) or {}
+    if path is not None and Path(path).exists() and Path(path).resolve() != DEFAULT_PATH.resolve():
+        raw.update(yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {})
     if overrides:
         raw.update({k: v for k, v in overrides.items() if v is not None})
 

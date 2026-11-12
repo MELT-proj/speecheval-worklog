@@ -102,6 +102,7 @@ def build_snapshot(
     feed: Sequence[ScannedRun],
     version: str,
     now: str,
+    failed: int | None = None,
 ) -> dict:
     """The whole view payload: slices, server-side matrix, filters, KPIs and feed."""
     slices = [_slice_row(config, run) for run in runs]
@@ -136,7 +137,7 @@ def build_snapshot(
             "families": len(config.families),
             "slices": len(slices),
             "pending": sum(1 for row in slices if row["pending"]),
-            "failed": sum(1 for row in feed if row.status == "error"),
+            "failed": failed if failed is not None else sum(1 for row in feed if row.status == "error"),
             "warnings": 0,
         },
         "filters": {

@@ -38,3 +38,8 @@ def test_pending_only_cell(cfg):
     snap = build_snapshot(cfg, runs, [], "v1", "now")
     cell = [c for c in snap["matrix"]["st"]["cells"] if c["family"] == "FLEURS XtoEN"][0]
     assert cell["status"] == "pending" and cell["value"] is None
+
+
+def test_explicit_failed_count_overrides_feed(cfg):
+    snap = build_snapshot(cfg, [], [], "v1", "now", failed=9)
+    assert snap["kpis"]["failed"] == 9
