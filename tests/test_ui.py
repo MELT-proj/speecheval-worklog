@@ -126,6 +126,11 @@ def test_page_boots_with_kpis_heatmap_feed_and_filters(live_server, tmp_path):
         page.wait_for_function("() => document.querySelector('#matrix').innerText.includes('…')")
         page.screenshot(path=str(tmp_path / "page.png"), full_page=True)
 
+        page.check("#show-all-checkpoints")
+        assert "showAll=1" in page.url
+        page.uncheck("#show-all-checkpoints")
+        assert "showAll=1" not in page.url
+
         page.click("#refresh")
         page.wait_for_function("() => document.getElementById('refresh').textContent === 'Refresh'")
         browser.close()
@@ -183,3 +188,59 @@ def test_theme_toggle_switches_and_persists(live_server):
         page.click("#theme-toggle")
         page.wait_for_function(f"() => document.documentElement.dataset.theme === '{initial}'")
         browser.close()
+
+
+def test_matrix_drops_old_checkpoints_and_unsupported_tasks(tmp_path):
+    for step in (3000, 26000):
+        make_log(
+            tmp_path,
+            campaign="speechval-fondue",
+            model=f"fondue-step-{step}",
+            eval_model=f"melt/fondue-step-{step}",
+            benchmark="fleurs24-st-xen-dev",
+            slice_id="st-fleurs-de_en",
+            metrics={"corpus_bleu": 20.0 + step / 1000},
+        )
+    make_log(
+        tmp_path,
+        model="cohere-transcribe-03-2026",
+        eval_model="melt/hf/cohere_transcribe",
+        benchmark="voxpopuli-dev",
+        slice_id="asr-voxpopuli-en-dev",
+        task="asr",
+        dataset_id="voxpopuli-en-dev",
+        src=None,
+        tgt=None,
+        lang="en",
+        metrics={"corpus_wer_raw": 0.1},
+    )
+    cfg = load_config(overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")})
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": 1500, "height": 1200})
+            page.goto(f"http://127.0.0.1:{server.server_port}")
+            snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+            page.evaluate(
+                "([snap, state]) => window.Worklog.matrix.render(snap, state)",
+                [snapshot, {"aggregate": "macro"}],
+            )
+            asr = page.locator(".matrix-block").nth(0).inner_text()
+            st = page.locator(".matrix-block").nth(1).inner_text()
+            assert "cohere-transcribe-03-2026" in asr
+            assert "cohere-transcribe-03-2026" not in st
+            assert "fondue-step-26000" in st
+            assert "fondue-step-3000" not in st
+
+            page.evaluate(
+                "([snap, state]) => window.Worklog.matrix.render(snap, state)",
+                [snapshot, {"aggregate": "macro", "showAllCheckpoints": True}],
+            )
+            assert "fondue-step-3000" in page.locator(".matrix-block").nth(1).inner_text()
+            browser.close()
+    finally:
+        server.shutdown()

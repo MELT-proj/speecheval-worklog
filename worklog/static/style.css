@@ -208,6 +208,17 @@ input[type="search"] { min-width: 210px; }
   font-size: 12px;
   border-radius: 8px;
 }
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.check input { accent-color: var(--accent); }
 .unclassified { padding: 0 18px 16px; max-height: 300px; overflow: auto; }
 .star { color: var(--good); font-size: 10px; margin-left: 5px; }
 

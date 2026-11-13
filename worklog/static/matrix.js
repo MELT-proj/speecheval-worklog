@@ -70,8 +70,8 @@ window.Worklog = window.Worklog || {};
     });
     if (!families.length) return null;
     const slices = visibleSlices(snapshot, state).filter((slice) => slice.task === task);
-    const models = snapshot.filters.models.filter(
-      (model) => !state.modelFamily || snapshot.model_families[model] === state.modelFamily
+    const models = snapshot.filters.models.filter((model) =>
+      W.modelVisible(snapshot, state, model, task)
     );
 
     const wrapper = document.createElement("section");

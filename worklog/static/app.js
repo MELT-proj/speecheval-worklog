@@ -24,6 +24,7 @@ window.Worklog = window.Worklog || {};
     for (const [key, value] of params.entries()) {
       if (key.startsWith("metric-") && value) state.metric[key.slice("metric-".length)] = value;
     }
+    state.showAllCheckpoints = params.get("showAll") === "1";
   }
 
   function writeHash() {
@@ -32,6 +33,7 @@ window.Worklog = window.Worklog || {};
     for (const [task, name] of Object.entries(state.metric || {})) {
       if (name) params.set(`metric-${task}`, name);
     }
+    if (state.showAllCheckpoints) params.set("showAll", "1");
     const hash = params.toString();
     history.replaceState(null, "", hash ? `#${hash}` : location.pathname + location.search);
   }
@@ -81,6 +83,7 @@ window.Worklog = window.Worklog || {};
     reset.addEventListener("click", () => {
       for (const [key] of FILTERS) state[key] = "";
       state.metric = {};
+      state.showAllCheckpoints = false;
       writeHash();
       buildFilters();
       renderAll();
@@ -113,6 +116,8 @@ window.Worklog = window.Worklog || {};
 
   function renderAll() {
     if (!snapshot) return;
+    const showAll = document.getElementById("show-all-checkpoints");
+    if (showAll) showAll.checked = !!state.showAllCheckpoints;
     renderKpis();
     buildFilters();
     renderStatus();
@@ -170,6 +175,11 @@ window.Worklog = window.Worklog || {};
       return;
     }
     document.getElementById("refresh").addEventListener("click", refreshNow);
+    document.getElementById("show-all-checkpoints").addEventListener("change", (event) => {
+      state.showAllCheckpoints = event.target.checked;
+      writeHash();
+      renderAll();
+    });
     setInterval(poll, POLL_MS);
   }
 

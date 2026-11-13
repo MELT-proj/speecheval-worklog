@@ -25,6 +25,19 @@ window.Worklog = window.Worklog || {};
     return items.reduce((sum, item) => sum + item.value, 0) / items.length;
   };
 
+  /* A model shown in a task's results: it ran that task, it passes the group
+     filter, and (unless Show all is ticked) it is the latest MELT/SMURF step. */
+  W.modelVisible = function (snapshot, state, model, task) {
+    const kind = snapshot.model_families[model] || "other";
+    if (state.modelFamily && kind !== state.modelFamily) return false;
+    if (task && !snapshot.slices.some((slice) => slice.model === model && slice.task === task)) return false;
+    if (!state.showAllCheckpoints && (kind === "melt" || kind === "smurf")) {
+      const info = (snapshot.checkpoints || {})[model];
+      if (info && info.latest === false) return false;
+    }
+    return true;
+  };
+
   W.duration = function (start, end) {
     if (!start || !end) return "";
     const ms = new Date(end) - new Date(start);
