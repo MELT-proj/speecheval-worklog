@@ -56,3 +56,26 @@ def test_snapshot_exposes_aggregate_and_metric_choices(cfg):
 def test_warnings_are_passed_through(cfg):
     snap = build_snapshot(cfg, [], [], "v1", "now", warnings=4)
     assert snap["kpis"]["warnings"] == 4
+
+
+def test_highest_step_is_the_latest_checkpoint(cfg):
+    runs = [
+        run(model="fondue-step-3000", provider="melt/fondue-step-3000"),
+        run(model="fondue-step-26000", provider="melt/fondue-step-26000"),
+        run(model="canary-1b-v2", provider="melt/hf/canary"),
+    ]
+    snap = build_snapshot(cfg, runs, [], "v1", "now")
+    checkpoints = snap["checkpoints"]
+    assert checkpoints["fondue-step-26000"] == {"base": "fondue", "step": 26000, "latest": True}
+    assert checkpoints["fondue-step-3000"]["latest"] is False
+    assert checkpoints["canary-1b-v2"] == {"base": "canary-1b-v2", "step": None, "latest": True}
+
+
+def test_latest_is_computed_within_a_model_family(cfg):
+    runs = [
+        run(model="seed-step-5", provider="melt/seed-step-5"),
+        run(model="seed-step-9", provider="smurf/seed-step-9"),
+    ]
+    snap = build_snapshot(cfg, runs, [], "v1", "now")
+    assert snap["checkpoints"]["seed-step-5"]["latest"] is True
+    assert snap["checkpoints"]["seed-step-9"]["latest"] is True

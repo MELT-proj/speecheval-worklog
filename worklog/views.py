@@ -8,10 +8,45 @@ many slices went into it. A cell knows the difference between "not run",
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from .config import Config, Family
 from .scanner import ScannedRun, direction_of, model_family
+
+_STEP_RE = re.compile(r"^(?P<base>.+)-step-(?P<step>\d+)$")
+
+
+def checkpoint_of(model: str) -> tuple[str, int | None]:
+    """The base name and numeric step of ``<base>-step-<n>``; ``None`` without a step."""
+    match = _STEP_RE.match(model)
+    if match is None:
+        return model, None
+    return match.group("base"), int(match.group("step"))
+
+
+def checkpoint_flags(models: Sequence[str], groups: dict[str, str]) -> dict[str, dict]:
+    """Per-model base, step and whether it is the highest step of its group.
+
+    Models without a step are always latest; a baseline that happens to carry a
+    step suffix cannot displace a MELT or SMURF checkpoint, because the group is
+    part of the key.
+    """
+    parsed = {model: checkpoint_of(model) for model in models}
+    highest: dict[tuple[str, str], int] = {}
+    for model, (base, step) in parsed.items():
+        if step is None:
+            continue
+        key = (groups.get(model, "other"), base)
+        highest[key] = max(highest.get(key, step), step)
+    return {
+        model: {
+            "base": base,
+            "step": step,
+            "latest": step is None or step == highest[(groups.get(model, "other"), base)],
+        }
+        for model, (base, step) in parsed.items()
+    }
 
 
 def _task_key(task: str) -> str:
@@ -109,6 +144,7 @@ def build_snapshot(
     slices = [_slice_row(config, run) for run in runs]
     models = sorted({run.model for run in runs})
     providers = {run.model: (run.provider or run.model) for run in runs}
+    model_groups = {model: model_family(provider) for model, provider in providers.items()}
     slices_by_family: dict[str, list[ScannedRun]] = {}
     for run in runs:
         family = family_of(config, run)
@@ -157,7 +193,8 @@ def build_snapshot(
             "families": [family.name for family in config.families],
             "languages": languages,
         },
-        "model_families": {model: model_family(provider) for model, provider in providers.items()},
+        "model_families": model_groups,
+        "checkpoints": checkpoint_flags(models, model_groups),
         "slices": slices,
         "matrix": matrix,
         "runs": [
