@@ -374,7 +374,7 @@ def make_sample_log(base, *, model="canary-1b-v2", benchmark="librispeech-valida
         "eval": {
             "eval_id": slice_id,
             "created": created,
-            "task": f"speech-{task}-{slice_id}",
+            "task": f"speech-{slice_id}",
             "task_args": {"prompt_style": "smurf", "instruction_file": str(instruction_file)},
             "model_args": {"batch_size": 8},
             "model_generate_config": {},
@@ -555,7 +555,7 @@ def test_samples_endpoint_pages_filters_and_sorts(client, store, tmp_path):
     page = client.get(f"/api/run/{rid}/samples?offset=10&limit=5").get_json()
     assert page["total"] == 30 and page["offset"] == 10 and len(page["samples"]) == 5
     assert page["samples"][0]["id"] == "03-000010"
-    narrow = client.get(f"/api/run/{rid}/samples?q=reference%202&limit=100").get_json()
+    narrow = client.get(f"/api/run/{rid}/samples?q=reference%202.&limit=100").get_json()
     assert [r["id"] for r in narrow["samples"]] == ["03-000002"]
     worst = client.get(f"/api/run/{rid}/samples?sort=worst&limit=3").get_json()
     assert [r["wer"] for r in worst["samples"]] == [0.9, 0.8, 0.7]
@@ -669,7 +669,7 @@ def test_inspector_renders_setup_and_samples(inspector_server, tmp_path):
         assert "smurf" in page.inner_text("#setup")
         assert "the generated 0" in page.inner_text("#samples")
         assert "1–25 of 30" in page.inner_text("#sample-count")
-        page.fill("#sample-search", "reference 2")
+        page.fill("#sample-search", "reference 2.")
         page.wait_for_function("() => document.querySelector('#sample-count').textContent.includes('1–1 of 1')")
         assert "03-000002" in page.inner_text("#samples")
         page.fill("#sample-search", "")
@@ -741,8 +741,8 @@ Include `util.js` then `inspect.js`.
   `Normalized` clamped to five lines and a "show all" toggle; `<details>` for
   `messages`, `scores` and `metadata` rendered as `<pre>` JSON.
 - Sorting options come from `digest.sorts`; `filter=issues` ticks the checkbox;
-  search is debounced 250 ms; paging buttons move by `limit` and update the URL
-  with `history.replaceState`; `#back-link` uses `back` when present. The count
+  search is debounced 250 ms and changing search or sort resets `offset` to 0;
+  paging buttons move by `limit` and update the URL with `history.replaceState`; `#back-link` uses `back` when present. The count
   reads exactly `"{first}–{last} of {total}"` with an en dash (so 30 samples at
   the default limit render `1–25 of 30`), or `"0 of 0"` when nothing matches.
 - Errors: a non-ok response renders one `.placeholder` line with
