@@ -106,6 +106,7 @@ def run(
     lang=None,
     metrics=None,
     pending=(),
+    row_id: int | None = None,
 ) -> ScannedRun:
     """A ScannedRun with sensible defaults, for store/views tests."""
     return ScannedRun(
@@ -129,4 +130,5 @@ def run(
         lang=lang,
         metrics={"corpus_bleu": 20.0} if metrics is None else metrics,
         pending=pending,
+        row_id=row_id,
     )

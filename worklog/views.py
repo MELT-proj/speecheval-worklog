@@ -84,6 +84,7 @@ def _slice_row(config: Config, run: ScannedRun) -> dict:
     family = family_of(config, run)
     return {
         "id": f"{run.model}|{run.benchmark}|{run.slice}",
+        "run_id": run.row_id,
         "campaign": run.campaign,
         "model": run.model,
         "benchmark": run.benchmark,

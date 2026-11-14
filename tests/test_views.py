@@ -71,6 +71,11 @@ def test_highest_step_is_the_latest_checkpoint(cfg):
     assert checkpoints["canary-1b-v2"] == {"base": "canary-1b-v2", "step": None, "latest": True}
 
 
+def test_slice_rows_carry_the_run_id(cfg):
+    snap = build_snapshot(cfg, [run(row_id=42)], [], "v1", "now")
+    assert snap["slices"][0]["run_id"] == 42
+
+
 def test_latest_is_computed_within_a_model_family(cfg):
     runs = [
         run(model="seed-step-5", provider="melt/seed-step-5"),
