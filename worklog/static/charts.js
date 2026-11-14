@@ -30,14 +30,18 @@ window.Worklog = window.Worklog || {};
     return null;
   }
 
-  /* Families with results under the campaign/group filters, in config order. */
+  /* Families with results under the campaign/group/language filters, in config order. */
   function familiesWithResults(snapshot, state) {
     const present = new Set(
       snapshot.slices
         .filter(
           (slice) =>
             (!state.campaign || slice.campaign === state.campaign) &&
-            (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily)
+            (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily) &&
+            (!state.language ||
+              slice.lang === state.language ||
+              slice.src === state.language ||
+              slice.tgt === state.language)
         )
         .map((slice) => slice.family)
     );
@@ -103,6 +107,15 @@ window.Worklog = window.Worklog || {};
     return (state.metric && state.metric[task]) || snapshot.matrix[task].metric;
   }
 
+  function showPlaceholder(el, hint, message) {
+    if (chart) {
+      chart.dispose();
+      chart = null;
+    }
+    if (hint) hint.textContent = "";
+    el.innerHTML = `<div class="placeholder">${W.escape(message)}</div>`;
+  }
+
   function render(snapshot, state) {
     const el = document.getElementById("heatmap");
     const hint = document.getElementById("heatmap-hint");
@@ -111,14 +124,14 @@ window.Worklog = window.Worklog || {};
     const families = familiesWithResults(snapshot, state);
     if (!families.length) {
       renderTabs([], "");
-      el.innerHTML = '<div class="placeholder">No heatmap data for the current filters.</div>';
+      showPlaceholder(el, hint, "No heatmap data for the current filters.");
       return;
     }
     const family = state.heatmap && families.includes(state.heatmap) ? state.heatmap : families[0];
     renderTabs(families, family);
     const task = taskForFamily(snapshot, family);
     if (!task || !snapshot.matrix[task]) {
-      el.innerHTML = '<div class="placeholder">No heatmap data for the current filters.</div>';
+      showPlaceholder(el, hint, "No heatmap data for the current filters.");
       return;
     }
     const metric = selectedMetric(snapshot, state, task);
@@ -135,7 +148,7 @@ window.Worklog = window.Worklog || {};
     );
     const axis = axisFor(rows);
     if (!rows.length || !axis.values.length) {
-      el.innerHTML = '<div class="placeholder">No per-language results for this family yet.</div>';
+      showPlaceholder(el, hint, "No per-language results for this family yet.");
       return;
     }
 
@@ -159,6 +172,14 @@ window.Worklog = window.Worklog || {};
       max = Math.max(max, value);
       return [x, y, value];
     });
+    if (!models.length || !data.length) {
+      showPlaceholder(
+        el,
+        hint,
+        "No visible model has results for this dataset — tick Show all checkpoints to include older ones."
+      );
+      return;
+    }
 
     el.innerHTML = "";
     el.style.height = `${Math.max(260, 46 + models.length * 38)}px`;

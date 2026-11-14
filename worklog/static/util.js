@@ -25,15 +25,35 @@ window.Worklog = window.Worklog || {};
     return items.reduce((sum, item) => sum + item.value, 0) / items.length;
   };
 
+  /* Highest step of a model's base within the current campaign scope: a
+     campaign that only ran an older checkpoint still shows it. */
+  function latestInScope(snapshot, state, model) {
+    const info = (snapshot.checkpoints || {})[model];
+    if (!info || info.step === null) return true;
+    const kind = snapshot.model_families[model] || "other";
+    let highest = info.step;
+    for (const [other, otherInfo] of Object.entries(snapshot.checkpoints || {})) {
+      if ((snapshot.model_families[other] || "other") !== kind) continue;
+      if (otherInfo.base !== info.base || otherInfo.step === null) continue;
+      if (
+        state.campaign &&
+        !snapshot.slices.some((slice) => slice.model === other && slice.campaign === state.campaign)
+      ) {
+        continue;
+      }
+      highest = Math.max(highest, otherInfo.step);
+    }
+    return info.step >= highest;
+  }
+
   /* A model shown in a task's results: it ran that task, it passes the group
      filter, and (unless Show all is ticked) it is the latest MELT/SMURF step. */
   W.modelVisible = function (snapshot, state, model, task) {
     const kind = snapshot.model_families[model] || "other";
     if (state.modelFamily && kind !== state.modelFamily) return false;
     if (task && !snapshot.slices.some((slice) => slice.model === model && slice.task === task)) return false;
-    if (!state.showAllCheckpoints && (kind === "melt" || kind === "smurf")) {
-      const info = (snapshot.checkpoints || {})[model];
-      if (info && info.latest === false) return false;
+    if (!state.showAllCheckpoints && (kind === "melt" || kind === "smurf") && !latestInScope(snapshot, state, model)) {
+      return false;
     }
     return true;
   };

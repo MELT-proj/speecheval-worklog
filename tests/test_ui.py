@@ -142,6 +142,12 @@ def test_page_boots_with_kpis_heatmap_feed_and_filters(live_server, tmp_path):
         page.select_option("#filter-language", "de")
         page.wait_for_function("() => document.querySelector('#matrix').innerText.includes('20.00')")
         assert "language=de" in page.url
+        page.wait_for_selector("#heatmap canvas")
+        assert page.locator("#heatmap-tabs .tab").all_inner_texts() == ["FLEURS XtoEN"]
+        option = page.evaluate(
+            "() => echarts.getInstanceByDom(document.getElementById('heatmap')).getOption()"
+        )
+        assert option["xAxis"][0]["data"] == ["de"]
 
         page.select_option("#metric-st", "corpus_chrf")
         page.wait_for_function("() => document.querySelector('#matrix').innerText.includes('40.00')")
@@ -310,3 +316,92 @@ def test_heatmap_has_tabs_and_variant_columns(live_server):
         )
         assert option["yAxis"][0]["data"] == ["canary-1b-v2"]  # cohere has no ST
         browser.close()
+
+
+def test_latest_checkpoint_is_scoped_to_the_selected_campaign(tmp_path):
+    make_log(
+        tmp_path,
+        campaign="speechval-old",
+        model="seed-step-10",
+        eval_model="melt/seed-step-10",
+        benchmark="fleurs24-st-xen-dev",
+        slice_id="st-fleurs-de_en",
+        metrics={"corpus_bleu": 20.0},
+    )
+    make_log(
+        tmp_path,
+        campaign="speechval-new",
+        model="seed-step-20",
+        eval_model="melt/seed-step-20",
+        benchmark="fleurs24-st-xen-dev",
+        slice_id="st-fleurs-de_en",
+        metrics={"corpus_bleu": 30.0},
+    )
+    cfg = load_config(overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")})
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": 1500, "height": 1200})
+            page.goto(f"http://127.0.0.1:{server.server_port}")
+            snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+            page.evaluate(
+                "([snap, state]) => window.Worklog.matrix.render(snap, state)",
+                [snapshot, {"aggregate": "macro", "campaign": "speechval-old"}],
+            )
+            assert "seed-step-10" in page.locator(".matrix-block").nth(1).inner_text()
+
+            page.evaluate(
+                "([snap, state]) => window.Worklog.matrix.render(snap, state)",
+                [snapshot, {"aggregate": "macro"}],
+            )
+            st = page.locator(".matrix-block").nth(1).inner_text()
+            assert "seed-step-20" in st
+            assert "seed-step-10" not in st
+            browser.close()
+    finally:
+        server.shutdown()
+
+
+def test_heatmap_points_to_show_all_when_only_hidden_checkpoints_ran(tmp_path):
+    make_log(
+        tmp_path,
+        campaign="speechval-fondue",
+        model="fondue-step-3000",
+        eval_model="melt/fondue-step-3000",
+        benchmark="fleurs24-st-xen-dev",
+        slice_id="st-fleurs-de_en",
+        metrics={"corpus_bleu": 20.0},
+    )
+    make_log(
+        tmp_path,
+        campaign="speechval-fondue",
+        model="fondue-step-26000",
+        eval_model="melt/fondue-step-26000",
+        benchmark="fleurs24-st-enx-dev",
+        slice_id="st-fleurs-en_de",
+        src="en",
+        tgt="de",
+        dataset_id="fleurs-en_de",
+        metrics={"corpus_bleu": 30.0},
+    )
+    cfg = load_config(overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")})
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": 1500, "height": 1200})
+            page.goto(f"http://127.0.0.1:{server.server_port}")
+            page.wait_for_function(
+                "() => document.getElementById('heatmap').innerText.includes('Show all checkpoints')"
+            )
+            assert page.locator("#heatmap canvas").count() == 0
+            browser.close()
+    finally:
+        server.shutdown()
