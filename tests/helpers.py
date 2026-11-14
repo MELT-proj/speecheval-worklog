@@ -84,6 +84,71 @@ def make_log(
     return path.resolve()
 
 
+def make_sample_log(base, *, model="canary-1b-v2", benchmark="librispeech-validation-clean",
+                    slice_id="asr-librispeech-validation-clean", task="asr",
+                    samples=3, campaign="speechval-canary",
+                    created="2026-11-12T10:00:00+00:00"):
+    """Write a log with real per-sample records and return its path."""
+    instructions = Path(base) / "instructions"
+    instructions.mkdir(parents=True, exist_ok=True)
+    instruction_file = instructions / "abc123.txt"
+    instruction_file.write_text("Transcribe this {lang} audio: ")
+    body = {
+        "version": 2,
+        "status": "success",
+        "eval": {
+            "eval_id": slice_id,
+            "created": created,
+            "task": f"speech-{slice_id}",
+            "task_args": {"prompt_style": "smurf", "instruction_file": str(instruction_file)},
+            "model_args": {"batch_size": 8},
+            "model_generate_config": {},
+            "config": {"epochs": 1},
+            "packages": {"inspect_ai": "0.3.254"},
+            "dataset": {"name": benchmark, "location": "/frozen", "samples": samples},
+            "metadata": {
+                "melteval_model": model, "melteval_benchmark": benchmark,
+                "melteval_slice": slice_id, "melteval_task": task,
+                "melteval_campaign": campaign,
+            },
+            "scorers": [{"name": "asr_scorer", "metrics": [{"name": "corpus_wer_raw"}]}],
+        },
+        "results": {
+            "total_samples": samples,
+            "completed_samples": samples,
+            "scores": [{"name": "asr_scorer", "metrics": {"corpus_wer_raw": {"name": "corpus_wer_raw", "value": 0.1}}}],
+        },
+        "stats": {"started_at": created, "completed_at": created, "model_usage": {}},
+        "samples": [
+            {
+                "id": f"03-{i:06d}", "epoch": 1, "input": "[asr 6.6s]",
+                "target": f"the reference {i}.",
+                "messages": [{"role": "user", "content": [{"type": "text", "text": "Transcribe this English audio: "}]}],
+                "output": {
+                    "model": "smurf//ckpt",
+                    "choices": [{"stop_reason": "stop"}],
+                    "completion": f"the generated {i}",
+                    "time": 1.0 + i,
+                },
+                "scores": {"asr_scorer": {
+                    "value": {"wer_errors": i, "ref_words": 10, "preamble": 0},
+                    "answer": f"the generated {i}", "metadata": {}, "history": [],
+                }},
+                "metadata": {"task": task, "lang": "en", "cut_id": f"cut-{i}"},
+                "store": {"melteval:prompt": "Transcribe this English audio: "},
+                "total_time": 1.0 + i, "working_time": 1.0, "turn_count": 1, "error_retries": [],
+                "events": [{"event": "model", "config": {"max_tokens": 256}}],
+            }
+            for i in range(samples)
+        ],
+    }
+    folder = Path(base) / "logs" / model / benchmark / slice_id
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{created.replace(':', '-')}.json"
+    path.write_text(json.dumps(body))
+    return path.resolve()
+
+
 def run(
     path="a.json",
     *,

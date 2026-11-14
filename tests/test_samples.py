@@ -1,4 +1,21 @@
-from worklog.samples import context_file, overview_of, per_sample_wer, sample_record, select, sorts_for
+import os
+
+import pytest
+
+from worklog.samples import (
+    SCHEMA_VERSION,
+    DigestError,
+    context_file,
+    load_digest,
+    overview_of,
+    per_sample_wer,
+    prune,
+    sample_record,
+    select,
+    sorts_for,
+)
+
+from .helpers import make_sample_log
 
 
 def sample(**over):
@@ -147,3 +164,55 @@ def test_overview_lifts_setup_and_generate_config(tmp_path):
     assert ov["scorers"] == [{"name": "asr_scorer", "metrics": ["corpus_wer_raw"]}]
     assert ov["context_files"]["instruction_file"]["exists"] is False
     assert ov["context_files"]["system_prompt_file"] is None
+
+
+def test_digest_is_written_and_reused(tmp_path):
+    log = make_sample_log(tmp_path, samples=3)
+    stat = log.stat()
+    first = load_digest(str(log), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert first.overview["task"] == "speech-asr-librispeech-validation-clean"
+    assert [r["id"] for r in first.samples] == ["03-000000", "03-000001", "03-000002"]
+    assert first.failed == 0 and first.flagged == 0
+    assert first.sorts == ["order", "worst", "slowest", "longest"]
+    sidecars = list((tmp_path / "s").glob("*.jsonl"))
+    assert len(sidecars) == 1 and f"-v{SCHEMA_VERSION}" in sidecars[0].name
+    second = load_digest(str(log), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert second.samples == first.samples
+
+
+def test_new_fingerprint_rebuilds_and_drops_the_old_sidecar(tmp_path):
+    log = make_sample_log(tmp_path, samples=2)
+    first = log.stat()
+    load_digest(str(log), first.st_mtime_ns, first.st_size, tmp_path / "s", [tmp_path])
+    load_digest(str(log), first.st_mtime_ns, first.st_size + 1, tmp_path / "s", [tmp_path])
+    assert len(list((tmp_path / "s").glob("*.jsonl"))) == 1
+
+
+def test_missing_and_broken_logs_raise_typed_errors(tmp_path):
+    missing = tmp_path / "gone.json"
+    with pytest.raises(DigestError) as err:
+        load_digest(str(missing), 1, 1, tmp_path / "s", [tmp_path])
+    assert err.value.status == 404
+    broken = tmp_path / "broken.json"
+    broken.write_text("{not json")
+    stat = broken.stat()
+    with pytest.raises(DigestError) as err:
+        load_digest(str(broken), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert err.value.status == 409 and "json" in err.value.message.lower()
+
+
+def test_failed_run_with_no_samples(tmp_path):
+    log = make_sample_log(tmp_path, samples=0)
+    stat = log.stat()
+    digest = load_digest(str(log), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert digest.samples == [] and digest.overview["dataset"]["samples"] == 0
+
+
+def test_prune_keeps_the_newest(tmp_path):
+    for i in range(3):
+        path = tmp_path / f"x{i}.jsonl"
+        path.write_text("x" * 10)
+        os.utime(path, (1000 + i, 1000 + i))
+    removed = prune(tmp_path, budget_bytes=15)
+    assert removed == 2
+    assert [p.name for p in tmp_path.glob("*.jsonl")] == ["x2.jsonl"]

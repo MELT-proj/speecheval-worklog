@@ -19,7 +19,12 @@ Two things worth knowing before changing anything here:
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
+import threading
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 #: Bumped whenever the digest layout changes; part of the sidecar name so old
@@ -286,3 +291,173 @@ def overview_of(body: dict, roots: Sequence[Path]) -> dict:
             "model_config_override": context_file(model_args.get("model_config_override"), roots),
         },
     }
+
+
+class DigestError(Exception):
+    """A log cannot be turned into a digest; ``status`` is an HTTP-like code."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+@dataclass(frozen=True)
+class Digest:
+    """The persisted, page-ready view of one inspect_ai log."""
+
+    overview: dict
+    samples: list[dict]
+    sorts: list[str]
+    flagged: int
+    failed: int
+
+
+#: One lock per sidecar path so concurrent reads/writes for the same log serialize.
+_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _lock_for(path: Path) -> threading.Lock:
+    """Return the lock associated with ``path``, creating it on first use."""
+    key = str(path)
+    lock = _LOCKS.get(key)
+    if lock is None:
+        lock = threading.Lock()
+        _LOCKS[key] = lock
+    return lock
+
+
+def sidecar_path(samples_dir: Path, path: str, mtime_ns: int, size: int) -> Path:
+    """Deterministic sidecar filename for a log fingerprint."""
+    digest = hashlib.sha1(os.path.abspath(path).encode("utf-8")).hexdigest()[:16]
+    return samples_dir / f"{digest}-{mtime_ns}-{size}-v{SCHEMA_VERSION}.jsonl"
+
+
+def _read_sidecar(sidecar: Path) -> Digest:
+    """Parse a sidecar written by :func:`_write_sidecar`."""
+    with sidecar.open("r", encoding="utf-8") as fh:
+        header_line = fh.readline()
+        header = json.loads(header_line)
+        if header.get("_schema") != SCHEMA_VERSION:
+            raise DigestError(409, "digest cache has stale schema")
+        samples = []
+        for line in fh:
+            samples.append(json.loads(line))
+    return Digest(
+        overview=header["_overview"],
+        sorts=header["_sorts"],
+        flagged=header["_flagged"],
+        failed=header["_failed"],
+        samples=samples,
+    )
+
+
+def _write_sidecar(sidecar: Path, digest: Digest) -> None:
+    """Atomically write a digest sidecar using ``os.replace``."""
+    samples_dir = sidecar.parent
+    samples_dir.mkdir(parents=True, exist_ok=True)
+    tmp = sidecar.with_suffix(".jsonl.tmp")
+    header = {
+        "_schema": SCHEMA_VERSION,
+        "_overview": digest.overview,
+        "_sorts": digest.sorts,
+        "_flagged": digest.flagged,
+        "_failed": digest.failed,
+    }
+    with tmp.open("w", encoding="utf-8") as fh:
+        fh.write(json.dumps(header) + "\n")
+        for record in digest.samples:
+            fh.write(json.dumps(record) + "\n")
+    os.replace(tmp, sidecar)
+
+
+def _build_digest(body: dict, roots: Sequence[Path]) -> Digest:
+    """Run the pure extraction functions over a parsed log body."""
+    records = [sample_record(sample) for sample in body.get("samples") or []]
+    flagged = sum(1 for record in records if record.get("flags"))
+    failed = sum(1 for record in records if "error" in (record.get("flags") or []))
+    return Digest(
+        overview=overview_of(body, roots),
+        samples=records,
+        sorts=sorts_for(records),
+        flagged=flagged,
+        failed=failed,
+    )
+
+
+def _remove_sibling_sidecars(keep: Path) -> None:
+    """Drop older sidecars that share the same sha1 prefix as ``keep``."""
+    prefix = keep.name.split("-", 1)[0]
+    for sibling in keep.parent.glob(f"{prefix}-*.jsonl"):
+        if sibling != keep:
+            try:
+                sibling.unlink()
+            except OSError:
+                pass
+
+
+def load_digest(path: str, mtime_ns: int, size: int, samples_dir: Path, roots: Sequence[Path]) -> Digest:
+    """Return a digest for ``path``, building or refreshing the sidecar cache as needed."""
+    log_path = Path(path)
+    try:
+        stat = log_path.stat()
+    except FileNotFoundError as exc:
+        raise DigestError(404, "log not found") from exc
+    except OSError as exc:
+        raise DigestError(404, f"log not readable: {exc}") from exc
+
+    # Prefer the file's current identity over the recorded fingerprint.
+    current_mtime_ns, current_size = stat.st_mtime_ns, stat.st_size
+    if current_size > MAX_LOG_BYTES:
+        raise DigestError(409, f"log exceeds {MAX_LOG_BYTES} bytes")
+
+    try:
+        text = log_path.read_text(encoding="utf-8")
+        body = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise DigestError(409, "log is not valid JSON") from exc
+    except OSError as exc:
+        raise DigestError(404, f"log not readable: {exc}") from exc
+
+    sidecar = sidecar_path(samples_dir, path, current_mtime_ns, current_size)
+    lock = _lock_for(sidecar)
+    with lock:
+        rebuild = not sidecar.exists()
+        if sidecar.exists():
+            try:
+                return _read_sidecar(sidecar)
+            except DigestError:
+                rebuild = True
+            except (json.JSONDecodeError, OSError, KeyError, TypeError, ValueError):
+                rebuild = True
+        if rebuild:
+            digest = _build_digest(body, roots)
+            _write_sidecar(sidecar, digest)
+            _remove_sibling_sidecars(sidecar)
+        try:
+            return _read_sidecar(sidecar)
+        except (json.JSONDecodeError, OSError, KeyError, TypeError, ValueError) as exc:
+            raise DigestError(409, f"digest cache is corrupt: {exc}") from exc
+
+
+def prune(samples_dir: Path, budget_bytes: int = 1024**3) -> int:
+    """Delete oldest sidecars while the directory is over ``budget_bytes``; return count removed."""
+    if not samples_dir.exists():
+        return 0
+    files = [p for p in samples_dir.iterdir() if p.is_file() and p.suffix == ".jsonl"]
+    total = sum(p.stat().st_size for p in files)
+    if total <= budget_bytes:
+        return 0
+    files.sort(key=lambda p: p.stat().st_mtime)
+    removed = 0
+    for path in files:
+        if total <= budget_bytes:
+            break
+        size = path.stat().st_size
+        try:
+            path.unlink()
+            total -= size
+            removed += 1
+        except OSError:
+            continue
+    return removed
