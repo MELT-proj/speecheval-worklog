@@ -20,6 +20,7 @@ window.Worklog = window.Worklog || {};
   function readHash() {
     const params = new URLSearchParams(location.hash.replace(/^#/, ""));
     for (const [key] of FILTERS) state[key] = params.get(key) || "";
+    state.heatmap = params.get("heatmap") || "";
     state.metric = {};
     for (const [key, value] of params.entries()) {
       if (key.startsWith("metric-") && value) state.metric[key.slice("metric-".length)] = value;
@@ -34,6 +35,7 @@ window.Worklog = window.Worklog || {};
       if (name) params.set(`metric-${task}`, name);
     }
     if (state.showAllCheckpoints) params.set("showAll", "1");
+    if (state.heatmap) params.set("heatmap", state.heatmap);
     const hash = params.toString();
     history.replaceState(null, "", hash ? `#${hash}` : location.pathname + location.search);
   }
@@ -84,6 +86,7 @@ window.Worklog = window.Worklog || {};
       for (const [key] of FILTERS) state[key] = "";
       state.metric = {};
       state.showAllCheckpoints = false;
+      state.heatmap = "";
       writeHash();
       buildFilters();
       renderAll();
@@ -188,6 +191,11 @@ window.Worklog = window.Worklog || {};
       state.metric[task] = name;
       writeHash();
       renderAll();
+    },
+    setHeatmapFamily(family) {
+      state.heatmap = family;
+      writeHash();
+      if (snapshot) W.charts.render(snapshot, state);
     },
   };
 

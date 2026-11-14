@@ -63,6 +63,31 @@ def live_server(tmp_path):
         lang="en",
         metrics={"corpus_wer_raw": 0.1},
     )
+    for suffix, wer in (("clean", 0.02), ("other", 0.08)):
+        make_log(
+            tmp_path,
+            benchmark=f"librispeech-validation-{suffix}",
+            slice_id=f"asr-librispeech-validation-{suffix}",
+            task="asr",
+            dataset_id=f"librispeech-validation-{suffix}",
+            src=None,
+            tgt=None,
+            lang="en",
+            metrics={"corpus_wer_raw": wer},
+        )
+    make_log(
+        tmp_path,
+        model="cohere-transcribe-03-2026",
+        eval_model="melt/hf/cohere_transcribe",
+        benchmark="voxpopuli-dev",
+        slice_id="asr-voxpopuli-en-dev",
+        task="asr",
+        dataset_id="voxpopuli-en-dev",
+        src=None,
+        tgt=None,
+        lang="en",
+        metrics={"corpus_wer_raw": 0.1},
+    )
     cfg = load_config(overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")})
     store = Store(cfg.cache)
     store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
@@ -244,3 +269,44 @@ def test_matrix_drops_old_checkpoints_and_unsupported_tasks(tmp_path):
             browser.close()
     finally:
         server.shutdown()
+
+
+def test_heatmap_has_tabs_and_variant_columns(live_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(live_server)
+        page.wait_for_selector("#heatmap canvas")
+
+        tabs = page.locator("#heatmap-tabs .tab").all_inner_texts()
+        assert tabs == ["LibriSpeech", "VoxPopuli", "FLEURS XtoEN"]
+
+        option = page.evaluate(
+            "() => echarts.getInstanceByDom(document.getElementById('heatmap')).getOption()"
+        )
+        assert option["xAxis"][0]["data"] == ["clean", "other"]
+        assert option["yAxis"][0]["data"] == ["canary-1b-v2"]
+        assert len(option["series"][0]["data"]) == 2  # one value per benchmark, not overlaid
+
+        page.select_option("#filter-language", "en")
+        page.click("#heatmap-tabs .tab >> text=VoxPopuli")
+        page.wait_for_function(
+            "() => document.getElementById('heatmap-hint').textContent.includes('VoxPopuli')"
+        )
+        assert "heatmap=VoxPopuli" in page.url
+        assert "language=en" in page.url
+        option = page.evaluate(
+            "() => echarts.getInstanceByDom(document.getElementById('heatmap')).getOption()"
+        )
+        assert option["xAxis"][0]["data"] == ["en"]
+        assert len(option["series"][0]["data"]) == 2  # canary and cohere
+
+        page.click("#heatmap-tabs .tab >> text=FLEURS XtoEN")
+        page.wait_for_function(
+            "() => document.getElementById('heatmap-hint').textContent.includes('FLEURS XtoEN')"
+        )
+        option = page.evaluate(
+            "() => echarts.getInstanceByDom(document.getElementById('heatmap')).getOption()"
+        )
+        assert option["yAxis"][0]["data"] == ["canary-1b-v2"]  # cohere has no ST
+        browser.close()

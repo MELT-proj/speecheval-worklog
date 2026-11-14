@@ -1,4 +1,4 @@
-/* Language heatmap: models x languages for one benchmark family. */
+/* Language heatmap: models x languages (or benchmarks) for one dataset family. */
 window.Worklog = window.Worklog || {};
 
 (function (W) {
@@ -30,19 +30,73 @@ window.Worklog = window.Worklog || {};
     return null;
   }
 
-  function activeTask(snapshot, state, slices) {
-    if (state.family) return taskForFamily(snapshot, state.family) || "st";
-    if (state.task) return state.task;
-    const present = ["st", "asr"].filter((task) => slices.some((slice) => slice.task === task));
-    return present[0] || "st";
+  /* Families with results under the campaign/group filters, in config order. */
+  function familiesWithResults(snapshot, state) {
+    const present = new Set(
+      snapshot.slices
+        .filter(
+          (slice) =>
+            (!state.campaign || slice.campaign === state.campaign) &&
+            (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily)
+        )
+        .map((slice) => slice.family)
+    );
+    return snapshot.filters.families.filter(
+      (family) =>
+        present.has(family) &&
+        (!state.task || taskForFamily(snapshot, family) === state.task) &&
+        (!state.family || family === state.family)
+    );
   }
 
-  function activeFamily(snapshot, state, slices, task) {
-    if (state.family) return state.family;
-    const first = snapshot.filters.families.find((family) =>
-      slices.some((slice) => slice.family === family && slice.task === task)
-    );
-    return first || snapshot.filters.families[0];
+  function commonPrefix(values) {
+    return values.reduce((prefix, value) => {
+      let i = 0;
+      while (i < prefix.length && i < value.length && prefix[i] === value[i]) i += 1;
+      return prefix.slice(0, i);
+    });
+  }
+
+  /* ``librispeech-validation-clean`` -> ``clean`` within its own family. */
+  function variantLabel(names, name) {
+    let prefix = commonPrefix(names);
+    const cut = prefix.lastIndexOf("-");
+    if (cut > 0) prefix = prefix.slice(0, cut + 1);
+    return name.startsWith(prefix) && name.length > prefix.length ? name.slice(prefix.length) : name;
+  }
+
+  /* Columns are benchmarks when the family has no language axis (LibriSpeech). */
+  function axisFor(rows) {
+    const languages = [...new Set(rows.map(languageOf).filter(Boolean))].sort();
+    const benchmarks = [...new Set(rows.map((row) => row.benchmark))].sort();
+    if (benchmarks.length > 1 && languages.length <= 1) {
+      return { mode: "benchmark", values: benchmarks };
+    }
+    return { mode: "language", values: languages };
+  }
+
+  function columnOf(row, mode) {
+    return mode === "benchmark" ? row.benchmark : languageOf(row);
+  }
+
+  function columnLabel(axis, value) {
+    return axis.mode === "benchmark" ? variantLabel(axis.values, value) : value;
+  }
+
+  function renderTabs(families, active) {
+    const bar = document.getElementById("heatmap-tabs");
+    if (!bar) return;
+    bar.innerHTML = "";
+    for (const family of families) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = family === active ? "tab active" : "tab";
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-selected", String(family === active));
+      button.textContent = family;
+      button.addEventListener("click", () => W.app.setHeatmapFamily(family));
+      bar.appendChild(button);
+    }
   }
 
   function selectedMetric(snapshot, state, task) {
@@ -54,8 +108,16 @@ window.Worklog = window.Worklog || {};
     const hint = document.getElementById("heatmap-hint");
     if (!el) return;
     const slices = visible(snapshot, state);
-    const task = activeTask(snapshot, state, slices);
-    if (!snapshot.matrix[task]) {
+    const families = familiesWithResults(snapshot, state);
+    if (!families.length) {
+      renderTabs([], "");
+      el.innerHTML = '<div class="placeholder">No heatmap data for the current filters.</div>';
+      return;
+    }
+    const family = state.heatmap && families.includes(state.heatmap) ? state.heatmap : families[0];
+    renderTabs(families, family);
+    const task = taskForFamily(snapshot, family);
+    if (!task || !snapshot.matrix[task]) {
       el.innerHTML = '<div class="placeholder">No heatmap data for the current filters.</div>';
       return;
     }
@@ -65,34 +127,37 @@ window.Worklog = window.Worklog || {};
       label: metric,
       lower: snapshot.matrix[task].lower,
     };
-    const family = activeFamily(snapshot, state, slices, task);
-    if (!family) {
-      el.innerHTML = '<div class="placeholder">No heatmap data for the current filters.</div>';
-      return;
-    }
 
     const rows = slices.filter((slice) => slice.family === family && slice.task === task);
     const models = snapshot.filters.models.filter(
-      (model) => !state.modelFamily || snapshot.model_families[model] === state.modelFamily
+      (model) =>
+        W.modelVisible(snapshot, state, model, task) && rows.some((row) => row.model === model)
     );
-    const languages = [...new Set(rows.map(languageOf).filter(Boolean))].sort();
-    if (!rows.length || !languages.length) {
+    const axis = axisFor(rows);
+    if (!rows.length || !axis.values.length) {
       el.innerHTML = '<div class="placeholder">No per-language results for this family yet.</div>';
       return;
     }
 
-    const data = [];
+    const byCell = new Map();
     let min = Infinity;
     let max = -Infinity;
     rows.forEach((row) => {
       const value = row.metrics[metric];
       if (!Number.isFinite(value)) return;
-      const x = languages.indexOf(languageOf(row));
+      const x = axis.values.indexOf(columnOf(row, axis.mode));
       const y = models.indexOf(row.model);
       if (x < 0 || y < 0) return;
-      data.push([x, y, value]);
+      const key = `${x}|${y}`;
+      if (!byCell.has(key)) byCell.set(key, []);
+      byCell.get(key).push(value);
+    });
+    const data = [...byCell.entries()].map(([key, values]) => {
+      const [x, y] = key.split("|").map(Number);
+      const value = values.reduce((sum, item) => sum + item, 0) / values.length;
       min = Math.min(min, value);
       max = Math.max(max, value);
+      return [x, y, value];
     });
 
     el.innerHTML = "";
@@ -118,15 +183,15 @@ window.Worklog = window.Worklog || {};
         textStyle: { color: text },
         formatter: (item) => {
           const model = models[item.value[1]];
-          const language = languages[item.value[0]];
+          const column = columnLabel(axis, axis.values[item.value[0]]);
           const value = percent ? (item.value[2] * 100).toFixed(2) : item.value[2].toFixed(2);
-          return `<b>${W.escape(model)}</b><br/>${W.escape(language)} · ${W.escape(rule.label)}: ${value}`;
+          return `<b>${W.escape(model)}</b><br/>${W.escape(column)} · ${W.escape(rule.label)}: ${value}`;
         },
       },
       grid: { left: 150, right: 24, top: 18, bottom: 78 },
       xAxis: {
         type: "category",
-        data: languages,
+        data: axis.values.map((value) => columnLabel(axis, value)),
         splitArea: { show: true, areaStyle: { color: ["transparent", "rgba(127,127,127,.06)"] } },
         axisLabel: { color: ink, fontSize: 11 },
         axisLine: { lineStyle: { color: gridLine } },
