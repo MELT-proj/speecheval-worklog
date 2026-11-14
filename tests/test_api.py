@@ -14,6 +14,7 @@ def test_snapshot_shape(client, store):
         "kpis",
         "filters",
         "model_families",
+        "checkpoints",
         "slices",
         "matrix",
         "runs",

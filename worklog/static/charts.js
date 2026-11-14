@@ -188,7 +188,7 @@ window.Worklog = window.Worklog || {};
           return `<b>${W.escape(model)}</b><br/>${W.escape(column)} · ${W.escape(rule.label)}: ${value}`;
         },
       },
-      grid: { left: 150, right: 24, top: 18, bottom: 78 },
+      grid: { left: 230, right: 24, top: 18, bottom: 78 },
       xAxis: {
         type: "category",
         data: axis.values.map((value) => columnLabel(axis, value)),
