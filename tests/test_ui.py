@@ -8,6 +8,7 @@ in ``playwright install-deps`` — on artemis they are staged under
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 from pathlib import Path
 
@@ -32,10 +33,15 @@ def _scan(path):
 
 @pytest.fixture
 def inspector_server(tmp_path):
-    path = make_sample_log(tmp_path, samples=30)
+    path = make_sample_log(
+        tmp_path,
+        samples=30,
+        extra_metrics={"details": {"name": "details", "value": {"wer_errors": 5, "ref_words": 10}}},
+    )
     store = Store(tmp_path / "w.sqlite")
     store.sync([_scan(path)])
-    app = create_app(load_config(), store)
+    cfg = dataclasses.replace(load_config(), cache=tmp_path / "w.sqlite")
+    app = create_app(cfg, store)
     server = make_server("127.0.0.1", 0, app)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_port}", store.all()[0].row_id
@@ -437,6 +443,8 @@ def test_inspector_renders_setup_and_samples(inspector_server, tmp_path):
         assert "smurf" in page.inner_text("#setup")
         assert "batch_size" in page.inner_text("#setup")
         assert "[object Object]" not in page.inner_text("#setup")
+        assert "[object Object]" not in page.inner_text("#scores")
+        assert "wer_errors" in page.inner_text("#scores")
         assert "the generated 0" in page.inner_text("#samples")
         assert "1–25 of 30" in page.inner_text("#sample-count")
         page.fill("#sample-search", "reference 2.")

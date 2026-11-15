@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 import threading
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -347,6 +348,8 @@ def _read_sidecar(sidecar: Path) -> Digest:
     with sidecar.open("r", encoding="utf-8") as fh:
         header_line = fh.readline()
         header = json.loads(header_line)
+        if not isinstance(header, dict):
+            raise DigestError(409, "digest cache header is malformed")
         if header.get("_schema") != SCHEMA_VERSION:
             raise DigestError(409, "digest cache has stale schema")
         samples = []
@@ -365,7 +368,7 @@ def _write_sidecar(sidecar: Path, digest: Digest) -> None:
     """Atomically write a digest sidecar using ``os.replace``."""
     samples_dir = sidecar.parent
     samples_dir.mkdir(parents=True, exist_ok=True)
-    tmp = sidecar.with_suffix(".jsonl.tmp")
+    tmp = sidecar.with_suffix(f".jsonl.tmp.{os.getpid()}.{uuid.uuid4().hex}")
     header = {
         "_schema": SCHEMA_VERSION,
         "_overview": digest.overview,
@@ -406,7 +409,12 @@ def _remove_sibling_sidecars(keep: Path) -> None:
 
 
 def load_digest(path: str, mtime_ns: int, size: int, samples_dir: Path, roots: Sequence[Path]) -> Digest:
-    """Return a digest for ``path``, building or refreshing the sidecar cache as needed."""
+    """Return a digest for ``path``, building or refreshing the sidecar cache as needed.
+
+    The *mtime_ns* and *size* arguments are the fingerprint recorded by the
+    scanner; they are ignored in favour of the file's current stat so a changed
+    log is always re-digested under its new fingerprint.
+    """
     log_path = Path(path)
     try:
         stat = log_path.stat()
@@ -415,43 +423,45 @@ def load_digest(path: str, mtime_ns: int, size: int, samples_dir: Path, roots: S
     except OSError as exc:
         raise DigestError(404, f"log not readable: {exc}") from exc
 
-    # Prefer the file's current identity over the recorded fingerprint.
     current_mtime_ns, current_size = stat.st_mtime_ns, stat.st_size
     if current_size > MAX_LOG_BYTES:
         raise DigestError(409, f"log exceeds {MAX_LOG_BYTES} bytes")
 
-    try:
-        text = log_path.read_text(encoding="utf-8")
-        body = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise DigestError(409, "log is not valid JSON") from exc
-    except UnicodeDecodeError as exc:
-        raise DigestError(409, "log is not valid UTF-8") from exc
-    except OSError as exc:
-        raise DigestError(404, f"log not readable: {exc}") from exc
-
-    if not isinstance(body, dict):
-        raise DigestError(409, "log is not a JSON object")
-
     sidecar = sidecar_path(samples_dir, path, current_mtime_ns, current_size)
     lock = _lock_for(sidecar)
     with lock:
-        rebuild = False
         try:
             return _read_sidecar(sidecar)
         except FileNotFoundError:
-            rebuild = True
+            pass
         except DigestError:
-            rebuild = True
+            pass
         except (json.JSONDecodeError, OSError, KeyError, TypeError, ValueError):
-            rebuild = True
-        if rebuild:
+            pass
+
+        try:
+            text = log_path.read_text(encoding="utf-8")
+            body = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise DigestError(409, "log is not valid JSON") from exc
+        except UnicodeDecodeError as exc:
+            raise DigestError(409, "log is not valid UTF-8") from exc
+        except OSError as exc:
+            raise DigestError(404, f"log not readable: {exc}") from exc
+
+        if not isinstance(body, dict):
+            raise DigestError(409, "log is not a JSON object")
+
+        try:
             digest = _build_digest(body, roots)
             _write_sidecar(sidecar, digest)
             _remove_sibling_sidecars(sidecar)
             # Pruning is best-effort: the sidecar is valid even if cleanup fails.
             with contextlib.suppress(Exception):
                 prune(samples_dir)
+        except OSError as exc:
+            raise DigestError(409, f"cannot write digest cache: {exc}") from exc
+
         try:
             return _read_sidecar(sidecar)
         except (json.JSONDecodeError, OSError, KeyError, TypeError, ValueError) as exc:
@@ -470,7 +480,7 @@ def prune(samples_dir: Path, budget_bytes: int = 1024**3) -> int:
     """Delete oldest sidecars while the directory is over ``budget_bytes``; return count removed."""
     if not samples_dir.exists():
         return 0
-    files = [p for p in samples_dir.iterdir() if p.is_file() and p.suffix == ".jsonl"]
+    files = [p for p in samples_dir.iterdir() if p.is_file() and (p.name.endswith(".jsonl") or ".jsonl.tmp" in p.name)]
     stats = [_safe_stat(p) for p in files]
     total = sum(s.st_size for s in stats if s is not None)
     if total <= budget_bytes:

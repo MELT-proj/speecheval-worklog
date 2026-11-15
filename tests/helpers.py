@@ -87,7 +87,7 @@ def make_log(
 def make_sample_log(base, *, model="canary-1b-v2", benchmark="librispeech-validation-clean",
                     slice_id="asr-librispeech-validation-clean", task="asr",
                     samples=3, campaign="speechval-canary",
-                    created="2026-11-12T10:00:00+00:00"):
+                    created="2026-11-12T10:00:00+00:00", extra_metrics=None):
     """Write a log with real per-sample records and return its path."""
     instructions = Path(base) / "instructions"
     instructions.mkdir(parents=True, exist_ok=True)
@@ -116,7 +116,10 @@ def make_sample_log(base, *, model="canary-1b-v2", benchmark="librispeech-valida
         "results": {
             "total_samples": samples,
             "completed_samples": samples,
-            "scores": [{"name": "asr_scorer", "metrics": {"corpus_wer_raw": {"name": "corpus_wer_raw", "value": 0.1}}}],
+            "scores": [{"name": "asr_scorer", "metrics": {
+                "corpus_wer_raw": {"name": "corpus_wer_raw", "value": 0.1},
+                **(extra_metrics or {}),
+            }}],
         },
         "stats": {"started_at": created, "completed_at": created, "model_usage": {}},
         "samples": [

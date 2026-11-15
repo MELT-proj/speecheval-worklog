@@ -1,3 +1,4 @@
+import json
 import os
 
 import pytest
@@ -12,6 +13,7 @@ from worklog.samples import (
     prune,
     sample_record,
     select,
+    sidecar_path,
     sorts_for,
 )
 
@@ -298,3 +300,94 @@ def test_prune_keeps_the_newest(tmp_path):
     removed = prune(tmp_path, budget_bytes=15)
     assert removed == 2
     assert [p.name for p in tmp_path.glob("*.jsonl")] == ["x2.jsonl"]
+
+
+def test_prune_removes_tmp_orphans(tmp_path):
+    sidecar = tmp_path / "abc-123.jsonl"
+    sidecar.write_text("x" * 10)
+    orphan = tmp_path / "abc-123.jsonl.tmp.1234.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    orphan.write_text("x" * 10)
+    os.utime(orphan, (1, 1))
+    removed = prune(tmp_path, budget_bytes=5)
+    assert removed == 2
+    assert not sidecar.exists()
+    assert not orphan.exists()
+
+
+def test_oversized_log_raises_409(tmp_path, monkeypatch):
+    log = make_sample_log(tmp_path, samples=1)
+    stat = log.stat()
+    monkeypatch.setattr("worklog.samples.MAX_LOG_BYTES", stat.st_size - 1)
+    with pytest.raises(DigestError) as err:
+        load_digest(str(log), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert err.value.status == 409
+
+
+def test_stale_schema_sidecar_rebuilds(tmp_path):
+    log = make_sample_log(tmp_path, samples=2)
+    stat = log.stat()
+    sidecar = sidecar_path(tmp_path / "s", str(log), stat.st_mtime_ns, stat.st_size)
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(json.dumps({"_schema": SCHEMA_VERSION - 1}) + "\n")
+    digest = load_digest(str(log), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert digest.overview["task"] == "speech-asr-librispeech-validation-clean"
+    assert len(digest.samples) == 2
+
+
+def test_non_dict_sidecar_header_rebuilds(tmp_path):
+    log = make_sample_log(tmp_path, samples=2)
+    stat = log.stat()
+    sidecar = sidecar_path(tmp_path / "s", str(log), stat.st_mtime_ns, stat.st_size)
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text("42\n")
+    digest = load_digest(str(log), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert digest.overview["task"] == "speech-asr-librispeech-validation-clean"
+    assert len(digest.samples) == 2
+
+
+def test_non_utf8_and_non_dict_logs_raise_409(tmp_path):
+    bad_utf8 = tmp_path / "bad.json"
+    bad_utf8.write_bytes(b'{"x": \xff}')
+    stat = bad_utf8.stat()
+    with pytest.raises(DigestError) as err:
+        load_digest(str(bad_utf8), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert err.value.status == 409
+
+    not_dict = tmp_path / "list.json"
+    not_dict.write_text("[1, 2, 3]")
+    stat = not_dict.stat()
+    with pytest.raises(DigestError) as err:
+        load_digest(str(not_dict), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert err.value.status == 409 and "json object" in err.value.message.lower()
+
+
+def test_unwritable_cache_dir_returns_409(tmp_path, monkeypatch):
+    log = make_sample_log(tmp_path, samples=1)
+    stat = log.stat()
+    samples_dir = tmp_path / "s"
+    samples_dir.mkdir(parents=True)
+
+    def fail_write(sidecar, digest):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr("worklog.samples._write_sidecar", fail_write)
+    with pytest.raises(DigestError) as err:
+        load_digest(str(log), stat.st_mtime_ns, stat.st_size, samples_dir, [tmp_path])
+    assert err.value.status == 409
+    assert "cannot write digest cache" in err.value.message.lower()
+
+
+def test_cache_hit_avoids_parsing_log(tmp_path):
+    log = make_sample_log(tmp_path, samples=2)
+    stat = log.stat()
+    samples_dir = tmp_path / "s"
+    first = load_digest(str(log), stat.st_mtime_ns, stat.st_size, samples_dir, [tmp_path])
+    assert first.samples
+
+    # A cache hit must not re-read the source log, even if it becomes unreadable.
+    log.chmod(0o000)
+    try:
+        second = load_digest(str(log), stat.st_mtime_ns, stat.st_size, samples_dir, [tmp_path])
+    finally:
+        log.chmod(0o644)
+    assert second.samples == first.samples

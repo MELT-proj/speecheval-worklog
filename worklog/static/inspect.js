@@ -94,10 +94,6 @@ window.Worklog = window.Worklog || {};
       <div class="fieldgrid-value">${content}</div>`;
   }
 
-  function stringify(value) {
-    return absent(value) ? "not recorded" : JSON.stringify(value, null, 2);
-  }
-
   function clampedRow(label, text, clampId) {
     const safe = W.escape(absent(text) ? "not recorded" : String(text));
     return `<div class="sample-row">
@@ -166,8 +162,17 @@ window.Worklog = window.Worklog || {};
         const rows = Object.entries(metrics)
           .map(([name, metric]) => {
             let value = metric;
-            if (typeof metric === "object" && metric !== null) value = metric.value;
-            return `<tr><td>${W.escape(name)}</td><td>${W.escape(String(value))}</td></tr>`;
+            let isCode = false;
+            if (typeof metric === "object" && metric !== null) {
+              value = metric.value;
+              isCode = true;
+            }
+            if (isCode && typeof value === "object" && value !== null) {
+              value = JSON.stringify(value, null, 2);
+            }
+            const display = String(value);
+            const content = isCode ? `<pre>${W.escape(display)}</pre>` : W.escape(display);
+            return `<tr><td>${W.escape(name)}</td><td>${content}</td></tr>`;
           })
           .join("");
         return `<div class="score-table-wrap">
@@ -195,7 +200,8 @@ window.Worklog = window.Worklog || {};
   function renderSample(sample) {
     const timing = sample.timing || {};
     const normalized = firstAnswer(sample.scores);
-    const clampId = (suffix) => `s-${suffix}-${W.escape(sample.id)}`;
+    const epoch = sample.epoch || 0;
+    const clampId = (suffix) => `s-${suffix}-${W.escape(sample.id)}-${epoch}`;
 
     const rows = [
       clampedRow("Reference", sample.target, clampId("ref")),
@@ -209,9 +215,9 @@ window.Worklog = window.Worklog || {};
       <details><summary>scores</summary>${renderJson(sample.scores)}</details>
       <details><summary>metadata</summary>${renderJson(sample.metadata)}</details>`;
 
-    return `<article class="sample" data-id="${W.escape(sample.id)}">
+    return `<article class="sample" data-id="${W.escape(sample.id)}" data-epoch="${epoch}">
       <div class="sample-head">
-        <span class="sample-id">${W.escape(sample.id)}</span>
+        <span class="sample-id">${W.escape(sample.id)} <span class="sample-epoch">epoch ${epoch}</span></span>
         <span class="sample-wer">${W.escape(fmtPercent(sample.wer))}</span>
         <span class="sample-time">${W.escape(fmtDuration(timing.total_time))}</span>
         ${flagChips(sample.flags)}
