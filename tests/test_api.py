@@ -99,6 +99,12 @@ def test_samples_endpoint_pages_filters_and_sorts(isolated_client, store, tmp_pa
     assert capped["limit"] == 100
 
 
+def test_inspect_page_is_served(client):
+    response = client.get("/inspect")
+    assert response.status_code == 200
+    assert b"SpeechEval" in response.data
+
+
 def test_inspector_errors_are_typed(isolated_client, store, tmp_path):
     store.sync([run(str(tmp_path / "gone.json"), task="asr")])
     rid = store.all()[0].row_id

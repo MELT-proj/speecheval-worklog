@@ -75,6 +75,10 @@ def create_app(config: Config, store: Store, scan: Callable[[], None] | None = N
     def index():
         return send_from_directory(app.static_folder, "index.html")
 
+    @app.get("/inspect")
+    def inspect_page():
+        return send_from_directory(app.static_folder, "inspect.html")
+
     @app.get("/api/snapshot")
     def api_snapshot():
         version = request.args.get("version")

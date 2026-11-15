@@ -246,6 +246,17 @@ def _first_model_config(samples: list[dict]) -> dict | None:
     return None
 
 
+def _first_format_spec(samples: list[dict]) -> dict | None:
+    """The prompt format spec from the first sample that carries one."""
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        spec = (sample.get("store") or {}).get("melteval:format_spec")
+        if isinstance(spec, dict):
+            return spec
+    return None
+
+
 def overview_of(body: dict, roots: Sequence[Path]) -> dict:
     """The setup half of the digest: everything about the run except its samples.
 
@@ -274,6 +285,7 @@ def overview_of(body: dict, roots: Sequence[Path]) -> dict:
         "task_args": task_args,
         "model_args": model_args,
         "model_generate_config": ev.get("model_generate_config"),
+        "format_spec": task_args.get("format_spec") or _first_format_spec(body.get("samples") or []),
         "eval_config": ev.get("config"),
         "packages": ev.get("packages"),
         "dataset": {

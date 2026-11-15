@@ -9,6 +9,7 @@ in ``playwright install-deps`` — on artemis they are staged under
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -20,7 +21,25 @@ from worklog.config import load_config
 from worklog.scanner import iter_log_paths, scan_run
 from worklog.store import Store
 
-from .helpers import make_log
+from .helpers import make_log, make_sample_log
+
+
+def _scan(path):
+    row = scan_run(Path(path))
+    assert row is not None
+    return row
+
+
+@pytest.fixture
+def inspector_server(tmp_path):
+    path = make_sample_log(tmp_path, samples=30)
+    store = Store(tmp_path / "w.sqlite")
+    store.sync([_scan(path)])
+    app = create_app(load_config(), store)
+    server = make_server("127.0.0.1", 0, app)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}", store.all()[0].row_id
+    server.shutdown()
 
 
 @pytest.fixture
@@ -405,3 +424,24 @@ def test_heatmap_points_to_show_all_when_only_hidden_checkpoints_ran(tmp_path):
             browser.close()
     finally:
         server.shutdown()
+
+
+def test_inspector_renders_setup_and_samples(inspector_server, tmp_path):
+    base, rid = inspector_server
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1400, "height": 1200})
+        page.goto(f"{base}/inspect?run={rid}")
+        page.wait_for_selector("#samples .sample")
+        assert "canary-1b-v2" in page.inner_text("#run-title")
+        assert "smurf" in page.inner_text("#setup")
+        assert "the generated 0" in page.inner_text("#samples")
+        assert "1–25 of 30" in page.inner_text("#sample-count")
+        page.fill("#sample-search", "reference 2.")
+        page.wait_for_function("() => document.querySelector('#sample-count').textContent.includes('1–1 of 1')")
+        assert "03-000002" in page.inner_text("#samples")
+        page.fill("#sample-search", "")
+        page.click("#sample-next")
+        page.wait_for_function("() => document.querySelector('#samples').textContent.includes('03-000025')")
+        page.screenshot(path=str(tmp_path / "inspector.png"), full_page=True)
+        browser.close()
