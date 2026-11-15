@@ -575,10 +575,11 @@ changed log hashes to a different file, and the loader re-stats the log before
 trusting any sidecar; `SCHEMA_VERSION` does the same job for a changed digest
 layout (v2 added the format spec) — old caches can never be served as a wrong
 shape, they are simply misses. A rebuild deletes the superseded sidecars of
-the same log; `prune(samples_dir, budget_bytes)` deletes the oldest sidecars
-first (1 GB default) to keep the directory down — currently exposed as a
-housekeeping helper, not yet wired into the request path; the fingerprint
-scheme already bounds steady-state growth to one live sidecar per log. The
+the same log; and after each fresh build `prune(samples_dir, budget_bytes)`
+deletes the oldest sidecars while the directory is over its 1 GB budget. The
+sweep is best-effort — failures are swallowed, so pruning can never fail a
+request — and runs only on a rebuild, never on a cache hit. The fingerprint
+scheme already bounds steady-state growth to one live sidecar per log; the
 whole directory is disposable: every digest rebuilds from its log. Writes are
 atomic (temp file + `os.replace`) under a per-sidecar lock, so concurrent
 requests build a log once. A log over 256 MB (`MAX_LOG_BYTES`) is refused

@@ -102,9 +102,10 @@ What the page shows comes from a JSONL digest per log cached under
 `<cache parent>/samples`: pure cache, rebuildable from the log, safe to delete
 entirely. A rebuild names the sidecar by the log's `(mtime, size)` and schema
 version, so a changed log never serves a stale digest and the superseded files
-for that log are dropped; `worklog.samples.prune` removes the oldest sidecars
-across the directory (1 GB budget). `run`, `q`, `sort`, `filter` and `offset`
-all live in the URL, so any page of samples is linkable as-is.
+for that log are dropped; after each fresh build the directory is also pruned
+to a 1 GB budget, oldest sidecars first (a failed sweep is ignored — it can
+never fail a request). `run`, `q`, `sort`, `filter` and `offset` all live in
+the URL, so any page of samples is linkable as-is.
 
 ## Development
 
