@@ -465,5 +465,6 @@ def test_drilldown_and_feed_link_to_the_inspector(live_server):
         assert href.startswith("/inspect?run=") and "back=" in href
         page.click("#modal-close")
         page.wait_for_selector("#feed a.run")
-        assert page.get_attribute("#feed a.run", "href").startswith("/inspect?run=")
+        feed_href = page.get_attribute("#feed a.run", "href")
+        assert feed_href.startswith("/inspect?run=") and "back=" in feed_href
         browser.close()

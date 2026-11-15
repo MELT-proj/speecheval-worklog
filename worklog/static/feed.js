@@ -16,10 +16,12 @@ window.Worklog = window.Worklog || {};
       el.innerHTML = '<div class="placeholder">No runs yet. Drop a log in the source folder.</div>';
       return;
     }
+    // The inspector reads `back` as a same-origin path (see safeBackUrl in
+    // inspect.js), hence the "/" before the filter hash.
     el.innerHTML = runs
       .map((run) => {
         const duration = W.duration(run.created, run.finished);
-        return `<a class="run" href="/inspect?run=${run.id}" title="${W.escape(run.path)}">
+        return `<a class="run" href="/inspect?run=${run.id}&back=${encodeURIComponent("/" + location.hash)}" title="${W.escape(run.path)}">
           ${chip(run.status)}
           <div>
             <div class="line1"><span class="model">${W.escape(run.model)}</span>

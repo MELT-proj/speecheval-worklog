@@ -242,7 +242,7 @@ window.Worklog = window.Worklog || {};
     body.innerHTML = `
       <p class="hint">${rows.length} slice(s) · ${W.escape(rule.label)} · click a path to copy it</p>
       <table class="matrix-table detail">
-        <thead><tr><th>Slice</th><th>${W.escape(rule.label)}</th><th>Samples</th><th>Status</th><th>Log</th><th>Samples</th></tr></thead>
+        <thead><tr><th>Slice</th><th>${W.escape(rule.label)}</th><th>Samples</th><th>Status</th><th>Log</th><th>Inspect</th></tr></thead>
         <tbody>${lines || '<tr><td colspan="6">No slices match the current filters.</td></tr>'}</tbody>
       </table>`;
     body.querySelectorAll("td.logpath").forEach((cell) => {
