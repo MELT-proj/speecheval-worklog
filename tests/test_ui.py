@@ -441,6 +441,7 @@ def test_inspector_renders_setup_and_samples(inspector_server, tmp_path):
         page.wait_for_function("() => document.querySelector('#sample-count').textContent.includes('1–1 of 1')")
         assert "03-000002" in page.inner_text("#samples")
         page.fill("#sample-search", "")
+        page.wait_for_function("() => document.querySelector('#sample-count').textContent.includes('1–25 of 30')")
         page.click("#sample-next")
         page.wait_for_function("() => document.querySelector('#samples').textContent.includes('03-000025')")
         page.screenshot(path=str(tmp_path / "inspector.png"), full_page=True)

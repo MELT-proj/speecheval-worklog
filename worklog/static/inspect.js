@@ -3,6 +3,7 @@ window.Worklog = window.Worklog || {};
 
 (function (W) {
   const DEFAULT_LIMIT = 25;
+  const SEARCH_DEBOUNCE_MS = 250;
 
   let runId = null;
   let currentOffset = 0;
@@ -12,9 +13,14 @@ window.Worklog = window.Worklog || {};
   let currentFilter = "";
   let overview = null;
   let searchTimer = null;
+  let requestSeq = 0;
 
   function params() {
     return new URLSearchParams(location.search);
+  }
+
+  function safeBackUrl(back) {
+    return back && back.startsWith("/") && !back.startsWith("//") ? back : "/";
   }
 
   function readParams() {
@@ -26,7 +32,7 @@ window.Worklog = window.Worklog || {};
     currentFilter = p.get("filter") || "";
     const back = p.get("back");
     const backLink = document.getElementById("back-link");
-    if (backLink && back) backLink.href = back;
+    if (backLink) backLink.href = safeBackUrl(back);
   }
 
   function writeParams() {
@@ -70,19 +76,23 @@ window.Worklog = window.Worklog || {};
     return `<pre>${W.escape(JSON.stringify(data, null, 2))}</pre>`;
   }
 
+  function absent(value) {
+    return value === null || value === undefined;
+  }
+
   function field(label, value, isCode) {
-    const content = isCode ? `<pre>${W.escape(value)}</pre>` : W.escape(value);
+    const display = absent(value) ? "not recorded" : String(value);
+    const content = isCode ? `<pre>${W.escape(display)}</pre>` : W.escape(display);
     return `<div class="fieldgrid-label">${W.escape(label)}</div>
       <div class="fieldgrid-value">${content}</div>`;
   }
 
   function stringify(value) {
-    if (value === null || value === undefined) return "–";
-    return JSON.stringify(value, null, 2);
+    return absent(value) ? "not recorded" : JSON.stringify(value, null, 2);
   }
 
   function clampedRow(label, text, clampId) {
-    const safe = W.escape(text === null || text === undefined ? "–" : String(text));
+    const safe = W.escape(absent(text) ? "not recorded" : String(text));
     return `<div class="sample-row">
       <div class="sample-label">${W.escape(label)}</div>
       <div class="sample-value">
@@ -93,8 +103,8 @@ window.Worklog = window.Worklog || {};
   }
 
   function plainRow(label, text, isCode) {
-    const safe = text === null || text === undefined ? "–" : String(text);
-    const content = isCode ? `<pre>${W.escape(safe)}</pre>` : W.escape(safe);
+    const display = absent(text) ? "not recorded" : String(text);
+    const content = isCode ? `<pre>${W.escape(display)}</pre>` : W.escape(display);
     return `<div class="sample-row">
       <div class="sample-label">${W.escape(label)}</div>
       <div class="sample-value">${content}</div>
@@ -105,14 +115,14 @@ window.Worklog = window.Worklog || {};
     const taskArgs = setup.task_args || {};
     const formatSpec = taskArgs.format_spec || setup.format_spec;
     const rows = [
-      field("prompt_style", taskArgs.prompt_style || "–", false),
-      field("instruction", taskArgs.instruction || "–", false),
+      field("prompt_style", taskArgs.prompt_style, false),
+      field("instruction", taskArgs.instruction, false),
       field("format_spec", stringify(formatSpec), true),
-      field("generate_config", stringify(setup.generate_config || setup.model_generate_config), true),
-      field("model_args", stringify(setup.model_args), true),
-      field("scorers", stringify(setup.scorers), true),
-      field("packages", stringify(setup.packages), true),
-      field("dataset", stringify(setup.dataset), true),
+      field("generate_config", setup.generate_config || setup.model_generate_config, true),
+      field("model_args", setup.model_args, true),
+      field("scorers", setup.scorers, true),
+      field("packages", setup.packages, true),
+      field("dataset", setup.dataset, true),
     ].join("");
 
     let note = "";
@@ -127,7 +137,7 @@ window.Worklog = window.Worklog || {};
       .map((name) => {
         const file = files[name];
         if (!file) return "";
-        const text = file.text !== null && file.text !== undefined ? file.text : file.note || "–";
+        const text = absent(file.text) ? (file.note || "not recorded") : file.text;
         return `<details class="setup-file">
           <summary>${W.escape(name)}: <code>${W.escape(file.path)}</code> ${file.exists ? "✓" : "✗"}</summary>
           ${renderJson(text)}
@@ -180,12 +190,13 @@ window.Worklog = window.Worklog || {};
     const normalized = firstAnswer(sample.scores);
     const clampId = (suffix) => `s-${suffix}-${W.escape(sample.id)}`;
 
-    let rows = "";
-    rows += clampedRow("Reference", sample.target, clampId("ref"));
-    rows += clampedRow("Normalized", normalized, clampId("norm"));
-    rows += clampedRow("Generated", sample.completion, clampId("gen"));
-    rows += plainRow("Prompt", sample.prompt, true);
-    rows += plainRow("Audio", sample.input, false);
+    const rows = [
+      clampedRow("Reference", sample.target, clampId("ref")),
+      clampedRow("Normalized", normalized, clampId("norm")),
+      clampedRow("Generated", sample.completion, clampId("gen")),
+      plainRow("Prompt", sample.prompt, true),
+      plainRow("Audio", sample.input, false),
+    ].join("");
 
     const details = `<details><summary>messages</summary>${renderJson(sample.messages)}</details>
       <details><summary>scores</summary>${renderJson(sample.scores)}</details>
@@ -214,10 +225,24 @@ window.Worklog = window.Worklog || {};
       .join("");
   }
 
+  function clampedOffset(total) {
+    if (total <= 0) return 0;
+    const lastPage = Math.ceil(total / currentLimit) - 1;
+    return Math.max(0, lastPage * currentLimit);
+  }
+
   function renderSamples(data) {
-    const total = data.total;
-    const offset = data.offset;
+    let total = data.total;
+    let offset = data.offset;
     const limit = data.limit;
+
+    if (total > 0 && offset >= total) {
+      currentOffset = clampedOffset(total);
+      writeParams();
+      loadSamples();
+      return;
+    }
+
     const first = total === 0 ? 0 : offset + 1;
     const last = Math.min(offset + limit, total);
     setText("sample-count", total === 0 ? "0 of 0" : `${first}–${last} of ${total}`);
@@ -265,15 +290,23 @@ window.Worklog = window.Worklog || {};
       setHtml("samples", `<div class="placeholder">No run selected — pick a slice in the results matrix.</div>`);
       return;
     }
-    const response = await fetch(`/api/run/${encodeURIComponent(runId)}/overview`, { cache: "no-store" });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    try {
+      const response = await fetch(`/api/run/${encodeURIComponent(runId)}/overview`, { cache: "no-store" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        setText("run-title", "Error");
+        setHtml("run-meta", W.escape(body.error || `HTTP ${response.status}`));
+        setHtml("samples", `<div class="placeholder">${W.escape(body.error || `HTTP ${response.status}`)}</div>`);
+        return;
+      }
+      overview = await response.json();
+    } catch (error) {
       setText("run-title", "Error");
-      setHtml("run-meta", W.escape(body.error || `HTTP ${response.status}`));
-      setHtml("samples", `<div class="placeholder">${W.escape(body.error || `HTTP ${response.status}`)}</div>`);
+      setHtml("run-meta", W.escape(error.message));
+      setHtml("samples", `<div class="placeholder">Could not load run: ${W.escape(error.message)}</div>`);
       return;
     }
-    overview = await response.json();
+
     const run = overview.run || {};
     const setup = overview.setup || {};
     const digest = overview.digest || {};
@@ -304,6 +337,7 @@ window.Worklog = window.Worklog || {};
 
   async function loadSamples() {
     if (!runId) return;
+    const mySeq = ++requestSeq;
     const url = new URL(`/api/run/${encodeURIComponent(runId)}/samples`, location.origin);
     url.searchParams.set("offset", String(currentOffset));
     url.searchParams.set("limit", String(currentLimit));
@@ -311,13 +345,21 @@ window.Worklog = window.Worklog || {};
     if (currentSort) url.searchParams.set("sort", currentSort);
     if (currentFilter) url.searchParams.set("filter", currentFilter);
 
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-      setHtml("samples", `<div class="placeholder">${W.escape(body.error || `HTTP ${response.status}`)}</div>`);
-      return;
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (mySeq !== requestSeq) return;
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+        setHtml("samples", `<div class="placeholder">${W.escape(body.error || `HTTP ${response.status}`)}</div>`);
+        return;
+      }
+      const data = await response.json();
+      if (mySeq !== requestSeq) return;
+      renderSamples(data);
+    } catch (error) {
+      if (mySeq !== requestSeq) return;
+      setHtml("samples", `<div class="placeholder">Could not load samples: ${W.escape(error.message)}</div>`);
     }
-    renderSamples(await response.json());
   }
 
   function bindControls() {
@@ -327,6 +369,11 @@ window.Worklog = window.Worklog || {};
     const prev = document.getElementById("sample-prev");
     const next = document.getElementById("sample-next");
 
+    function flushSearch() {
+      clearTimeout(searchTimer);
+      currentQ = search ? search.value : "";
+    }
+
     if (search) {
       search.value = currentQ;
       search.addEventListener("input", () => {
@@ -335,11 +382,12 @@ window.Worklog = window.Worklog || {};
           currentQ = search.value;
           currentOffset = 0;
           updateUrlAndLoad();
-        }, 250);
+        }, SEARCH_DEBOUNCE_MS);
       });
     }
     if (sort) {
       sort.addEventListener("change", () => {
+        flushSearch();
         currentSort = sort.value;
         currentOffset = 0;
         updateUrlAndLoad();
@@ -348,6 +396,7 @@ window.Worklog = window.Worklog || {};
     if (issues) {
       issues.checked = currentFilter === "issues";
       issues.addEventListener("change", () => {
+        flushSearch();
         currentFilter = issues.checked ? "issues" : "";
         currentOffset = 0;
         updateUrlAndLoad();
@@ -355,12 +404,14 @@ window.Worklog = window.Worklog || {};
     }
     if (prev) {
       prev.addEventListener("click", () => {
+        flushSearch();
         currentOffset = Math.max(currentOffset - currentLimit, 0);
         updateUrlAndLoad();
       });
     }
     if (next) {
       next.addEventListener("click", () => {
+        flushSearch();
         currentOffset += currentLimit;
         updateUrlAndLoad();
       });
