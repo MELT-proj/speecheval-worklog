@@ -435,6 +435,8 @@ def test_inspector_renders_setup_and_samples(inspector_server, tmp_path):
         page.wait_for_selector("#samples .sample")
         assert "canary-1b-v2" in page.inner_text("#run-title")
         assert "smurf" in page.inner_text("#setup")
+        assert "batch_size" in page.inner_text("#setup")
+        assert "[object Object]" not in page.inner_text("#setup")
         assert "the generated 0" in page.inner_text("#samples")
         assert "1–25 of 30" in page.inner_text("#sample-count")
         page.fill("#sample-search", "reference 2.")

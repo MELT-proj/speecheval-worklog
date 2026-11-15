@@ -20,7 +20,7 @@ window.Worklog = window.Worklog || {};
   }
 
   function safeBackUrl(back) {
-    return back && back.startsWith("/") && !back.startsWith("//") ? back : "/";
+    return back && back.startsWith("/") && !back.startsWith("//") && !back.includes("\\") ? back : "/";
   }
 
   function readParams() {
@@ -81,7 +81,14 @@ window.Worklog = window.Worklog || {};
   }
 
   function field(label, value, isCode) {
-    const display = absent(value) ? "not recorded" : String(value);
+    let display;
+    if (absent(value)) {
+      display = "not recorded";
+    } else if (typeof value === "object") {
+      display = JSON.stringify(value, null, 2);
+    } else {
+      display = String(value);
+    }
     const content = isCode ? `<pre>${W.escape(display)}</pre>` : W.escape(display);
     return `<div class="fieldgrid-label">${W.escape(label)}</div>
       <div class="fieldgrid-value">${content}</div>`;
@@ -117,7 +124,7 @@ window.Worklog = window.Worklog || {};
     const rows = [
       field("prompt_style", taskArgs.prompt_style, false),
       field("instruction", taskArgs.instruction, false),
-      field("format_spec", stringify(formatSpec), true),
+      field("format_spec", formatSpec, true),
       field("generate_config", setup.generate_config || setup.model_generate_config, true),
       field("model_args", setup.model_args, true),
       field("scorers", setup.scorers, true),
