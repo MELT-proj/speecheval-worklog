@@ -511,3 +511,147 @@ says plainly that there is no auth.
   on hover, unless it looks cluttered.
 - How the UI affords switching the headline metric (a small selector above the
   matrix, per task) without making the header busy.
+
+---
+
+# Part C — the run inspector
+
+2026-11-14. This supersedes one line of Part B: "sample-level transcript
+browsing", ruled out as a non-goal there, turned out to be the question a
+reader asks next. Spec:
+`docs/superpowers/specs/2026-11-14-run-inspector-design.md`; build plan:
+`docs/superpowers/plans/2026-11-14-run-inspector.md`.
+
+## C1. Why it exists
+
+The worklog answers "what score did this slice get". When a score looks wrong,
+the next question is "what did the model actually see and say", and the only
+ways to ask it were opening a 3–50 MB inspect JSON by hand, or `inspect view`
+— which needs the eval venv on the worklog host, shows inspect's raw
+structure instead of melteval's meaning, and drops the matrix context. The
+inspector is a `/inspect?run=<id>` page that diagnoses one log from the
+browser: wrong prompt, wrong language, wrong normalizer, a checkpoint that
+emitted garbage, a truncated completion, a broken reference. Scope is one
+model × slice log; cross-model comparison stays out.
+
+## C2. Run identity
+
+A URL needs a key, and the snapshot published only a composite string id per
+slice while its `runs` list covers just the newest 50 logs — an older
+drill-down row had nothing to link with. Slice rows gained exactly one
+additive field, `run_id` (the `ScoredRun.row_id`), the only relaxation of the
+otherwise frozen payload. The key is the SQLite row id, never a filesystem
+path: a path in a URL needs its own escaping and breaks when a log is
+rewritten and re-scanned.
+
+## C3. The digest sidecar (`worklog/samples.py`)
+
+Paging a 2000-sample slice through a 50 MB log must not re-parse the log per
+request or ship it whole to the browser, so each log is parsed once into a
+JSONL digest cached on disk at
+
+```
+<cache parent>/samples/<sha1(abspath)[:16]>-<mtime_ns>-<size>-v<SCHEMA_VERSION>.jsonl
+```
+
+— beside the SQLite cache (scratch, disposable, never `$HOME`); sample text
+never enters SQLite. Line 1 is the header (`_schema`, `_overview`, `_sorts`,
+`_flagged`, `_failed`); each following line is one sample: `id`, `epoch`,
+`input`, `target`, `messages`, the rendered `prompt` and `format_spec` from
+the sample store, `completion`, `stop_reason` (`choices[0]`, falling back to
+`output.stop_reason`), `model`, the scorer entries (`value`, `answer`,
+`metadata`, history only as its length), `metadata`, timing, `error`, plus
+two derived fields. `flags` is any of `error`, `empty`, `truncated` (a
+`max_tokens`/`length` stop), `preamble` (a scorer counted preamble tokens);
+`wer` is discovered by shape — the first scorer whose value carries integer
+`wer_errors` and `ref_words > 0` — not by scorer name, because the scoring
+pass varies and `chunked_asr_scorer` (token counts only) simply has none.
+`events` are dropped except the first `model` event's config, lifted into the
+overview as the effective generate config. `_sorts` lists the sorts that are
+meaningful for this log (`worst` only when some sample has a derived WER).
+
+Invalidation lives in the name. The `(mtime_ns, size)` fingerprint means a
+changed log hashes to a different file, and the loader re-stats the log before
+trusting any sidecar; `SCHEMA_VERSION` does the same job for a changed digest
+layout (v2 added the format spec) — old caches can never be served as a wrong
+shape, they are simply misses. A rebuild deletes the superseded sidecars of
+the same log; `prune(samples_dir, budget_bytes)` deletes the oldest sidecars
+first (1 GB default) to keep the directory down — currently exposed as a
+housekeeping helper, not yet wired into the request path; the fingerprint
+scheme already bounds steady-state growth to one live sidecar per log. The
+whole directory is disposable: every digest rebuilds from its log. Writes are
+atomic (temp file + `os.replace`) under a per-sidecar lock, so concurrent
+requests build a log once. A log over 256 MB (`MAX_LOG_BYTES`) is refused
+with a clear reason rather than read into memory: the scanned campaigns top
+out around 50 MB, and the alternative is a multi-GB RSS spike on the machine
+that also runs the scanner.
+
+The overview also describes the files the eval config pointed at
+(`instruction_file`, `system_prompt_file`, `model_config_override`) as
+`{path, exists, text, note}` with text capped at 20 KB — and reads them only
+when the recorded absolute path resolves under a configured `root`. The app
+can be shared with `--host 0.0.0.0` and a log is writable input, so the page
+must not become a general file reader. A relative path is reported as
+recorded, never resolved (guessing a base directory turns a moved log into a
+confident wrong answer); a missing file inside the roots is itself a finding.
+
+## C4. The two endpoints
+
+`worklog/app.py` serves the digest over GET, taking the log path from
+`Store.get(run_id)`:
+
+- `GET /api/run/<id>/overview` → `{run, setup, scores, stats, digest:
+  {samples, failed, flagged, sorts}}` — everything the setup panel and the
+  score tables render.
+- `GET /api/run/<id>/samples?offset=0&limit=25&q=&sort=order&filter=all` →
+  `{total, offset, limit, samples}` — one page of cards. `limit` clamps to
+  1..100, `offset` to ≥ 0; `q` is a case-insensitive substring over id,
+  reference, completion and the scorers' answers; `filter=issues` keeps
+  flagged samples; the sort (`order`, `worst`, `slowest`, `longest`) runs
+  server-side so paging is stable.
+
+Errors are typed and never a 500: unknown run id → 404; vanished log → 404
+with the recorded path; oversized, non-JSON, or unreadable log — or a cache
+that cannot be rebuilt — → 409 with the reason, so the page says what is
+wrong instead of showing a stack trace.
+
+## C5. The page
+
+`static/inspect.html` + `static/inspect.js`: same styles, theme and `util.js`
+helpers; no framework, no build step. The header shows `model · benchmark`
+with task, status, created/finished, the digest's sample/failed/flagged
+counts and the log path. The setup card renders `prompt_style`, the
+`instruction` text, `format_spec`, the effective `generate_config`,
+`model_args`, scorers, packages and dataset, with the context files as
+collapsible blocks; scores render as one small table per scorer. Sample cards
+show id, WER (percent, or "–"), time and flag chips, then Reference /
+Normalized / Generated / Prompt / Audio — the audio row is the `input`
+pointer, not playable — with collapsible messages/scores/metadata. Long text
+clamps to five lines behind a "show all" toggle; absent fields render as
+"not recorded". When `format_spec.apply_chat_template` is set the page states
+that the chat template is applied inside the provider and the messages shown
+are pre-template: the templated prompt is not in the log, and this says so
+rather than implying otherwise. `run`, `offset`, `q`, `sort` and `filter` live
+in the URL; search is debounced and changing it or the sort resets paging to
+0; in-flight responses are dropped by sequence number so a slow page cannot
+overwrite a newer one; the no-run, no-samples and error states are each one
+explanatory line.
+
+## C6. Entry points
+
+The matrix drill-down gained an **Inspect** column whose link is
+`/inspect?run=<row.run_id>`, and every run-feed row links the same page with
+its existing `id`. Both carry the current filter hash as `back=…` — prefixed
+with `/`, because the inspector accepts as `back` only same-origin relative
+paths (rejecting `//host…`, absolute URLs and backslashes) and the bare hash
+would not survive that check. The "← Results" link therefore restores the
+exact filtered view the link came from, instead of guessing at history.
+
+## C7. Deliberate limits
+
+No audio playback (a shar pointer; playing it would pull lhotse and the
+corpora into a metadata-only reader). No cross-model comparison, no diff
+view, no editing or re-running. No new dependency, no change to the scanner
+or the SQLite schema beyond `run_id`. The 256 MB log cap stands — refusing an
+outlier with a clear message beats risking the host — and the sidecar cache
+is cache: rebuildable, disposable, budgeted.

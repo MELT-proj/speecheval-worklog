@@ -18,8 +18,10 @@ re-scoring anything, re-reading audio, or needing the evaluation harness.
   older logs); anything else is ignored. `results/*.csv` is never read.
 - Caches the extraction in SQLite, keyed by path + mtime + size, so a rescan is
   cheap and a new log appears without restarting.
-- **Read-only.** The only write is that cache. There is no editing, no notes, no
-  re-scoring, no sample browser (the log path and `inspect view` cover that).
+- **Read-only.** The only writes are that cache and the inspector's
+  rebuildable digest sidecars. There is no editing, no notes, no re-scoring;
+  the sample browser is `/inspect?run=<id>`, served from per-log digests
+  cached under `<cache parent>/samples`.
 - Light and dark themes, remembered per browser (the toggle sits in the header;
   the first visit follows the OS preference).
 - **No authentication.** Bind loopback by default; share deliberately (below).
@@ -77,6 +79,33 @@ the numbers to quote. A cell is `–` when nothing ran, `…` when the slices ar
 scored but their post-scorer has not run yet, and `*` when only part of the
 family is scored.
 
+### Inspecting a run
+
+`/inspect?run=<id>` opens one log in the browser: the slice's setup (prompt
+style, instruction text and the instruction file it came from, format spec,
+effective generate config, model args, declared scorers, package versions),
+the aggregate scores, and paged per-sample cards — id, WER, time, issue flags
+(`error`, `empty`, `truncated`, `preamble`), reference, the normalized answer
+the metric used, the raw completion, the rendered prompt, and collapsible
+messages/scores/metadata. Reach it from the **Inspect** column of the matrix
+drill-down or from any run-feed row; the back link returns to the filters the
+link came from.
+
+The limits are the honest ones. Audio is a pointer, not playback — playing it
+would mean depending on lhotse and the corpora, which this app does not. When
+a checkpoint's chat template is applied inside the provider, the templated
+prompt is not in the log, and the page says so rather than pretending the
+bare messages are what the model saw. A log over 256 MB is refused with a
+clear error, not parsed into memory.
+
+What the page shows comes from a JSONL digest per log cached under
+`<cache parent>/samples`: pure cache, rebuildable from the log, safe to delete
+entirely. A rebuild names the sidecar by the log's `(mtime, size)` and schema
+version, so a changed log never serves a stale digest and the superseded files
+for that log are dropped; `worklog.samples.prune` removes the oldest sidecars
+across the directory (1 GB budget). `run`, `q`, `sort`, `filter` and `offset`
+all live in the URL, so any page of samples is linkable as-is.
+
 ## Development
 
 ```bash
@@ -111,6 +140,7 @@ worklog/config.py       YAML config, defaults, metric/family lookups
 worklog/scanner.py      inspect log -> one flat row
 worklog/store.py        SQLite cache, duplicate policy
 worklog/views.py        family matching, aggregation, snapshot payload
+worklog/samples.py      one log -> per-sample digest, sidecar cache
 worklog/app.py          Flask routes + scanner thread
 worklog/static/         page, style, matrix.js, charts.js, feed.js, app.js
 tests/                  unit + API + headless-browser tests
