@@ -448,3 +448,22 @@ def test_inspector_renders_setup_and_samples(inspector_server, tmp_path):
         page.wait_for_function("() => document.querySelector('#samples').textContent.includes('03-000025')")
         page.screenshot(path=str(tmp_path / "inspector.png"), full_page=True)
         browser.close()
+
+
+def test_drilldown_and_feed_link_to_the_inspector(live_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(live_server)
+        page.wait_for_function("window.Worklog && window.Worklog.matrix")
+        snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+        page.evaluate("([snap, state]) => window.Worklog.matrix.render(snap, state)",
+                      [snapshot, {"aggregate": "macro"}])
+        page.locator(".cell:not(.empty)").first.click()
+        page.wait_for_selector("#modal[open]")
+        href = page.get_attribute("#modal a.samples", "href")
+        assert href.startswith("/inspect?run=") and "back=" in href
+        page.click("#modal-close")
+        page.wait_for_selector("#feed a.run")
+        assert page.get_attribute("#feed a.run", "href").startswith("/inspect?run=")
+        browser.close()

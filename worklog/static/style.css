@@ -305,6 +305,7 @@ table.matrix-table { border-collapse: separate; border-spacing: 0; width: 100%; 
 .tab.active { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 600; }
 
 .feed { max-height: 420px; overflow: auto; padding: 6px 0; }
+.feed a.run { color: inherit; text-decoration: none; }
 .run { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--line-soft); }
 .run:last-child { border-bottom: 0; }
 .run .chip {

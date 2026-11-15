@@ -19,7 +19,7 @@ window.Worklog = window.Worklog || {};
     el.innerHTML = runs
       .map((run) => {
         const duration = W.duration(run.created, run.finished);
-        return `<div class="run" title="${W.escape(run.path)}">
+        return `<a class="run" href="/inspect?run=${run.id}" title="${W.escape(run.path)}">
           ${chip(run.status)}
           <div>
             <div class="line1"><span class="model">${W.escape(run.model)}</span>
@@ -28,7 +28,7 @@ window.Worklog = window.Worklog || {};
             <div class="line2">${W.when(run.finished || run.created)}${duration ? ` · ${duration}` : ""}</div>
             <div class="path">${W.escape(run.path)}</div>
           </div>
-        </div>`;
+        </a>`;
       })
       .join("");
   }

@@ -221,6 +221,8 @@ window.Worklog = window.Worklog || {};
     const modal = document.getElementById("modal");
     title.textContent = `${model} · ${family}`;
 
+    // The inspector reads `back` as a same-origin path (see safeBackUrl in
+    // inspect.js), hence the "/" before the filter hash.
     const lines = rows
       .map((row) => {
         const has = Number.isFinite(row.metrics[metric]);
@@ -232,6 +234,7 @@ window.Worklog = window.Worklog || {};
           <td>${row.completed}/${row.samples}</td>
           <td>${W.escape(status)}</td>
           <td class="logpath">${W.escape(row.path)}</td>
+          <td><a class="samples" href="/inspect?run=${row.run_id}&back=${encodeURIComponent("/" + location.hash)}">open</a></td>
         </tr>`;
       })
       .join("");
@@ -239,8 +242,8 @@ window.Worklog = window.Worklog || {};
     body.innerHTML = `
       <p class="hint">${rows.length} slice(s) · ${W.escape(rule.label)} · click a path to copy it</p>
       <table class="matrix-table detail">
-        <thead><tr><th>Slice</th><th>${W.escape(rule.label)}</th><th>Samples</th><th>Status</th><th>Log</th></tr></thead>
-        <tbody>${lines || '<tr><td colspan="5">No slices match the current filters.</td></tr>'}</tbody>
+        <thead><tr><th>Slice</th><th>${W.escape(rule.label)}</th><th>Samples</th><th>Status</th><th>Log</th><th>Samples</th></tr></thead>
+        <tbody>${lines || '<tr><td colspan="6">No slices match the current filters.</td></tr>'}</tbody>
       </table>`;
     body.querySelectorAll("td.logpath").forEach((cell) => {
       cell.style.cursor = "copy";
