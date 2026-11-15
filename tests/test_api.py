@@ -1,4 +1,4 @@
-from .helpers import run
+from .helpers import make_sample_log, run
 
 
 def test_snapshot_shape(client, store):
@@ -53,3 +53,46 @@ def test_refresh_invokes_the_scan_callback(cfg, store):
     client = create_app(cfg, store, scan=lambda: calls.append(1)).test_client()
     assert client.post("/api/refresh").status_code == 200
     assert calls == [1]
+
+
+def test_overview_returns_setup(client, store, tmp_path, cfg):
+    path = make_sample_log(tmp_path, samples=2)
+    store.sync([run(str(path), model="canary-1b-v2", task="asr")])
+    rid = store.all()[0].row_id
+    body = client.get(f"/api/run/{rid}/overview").get_json()
+    assert body["run"]["model"] == "canary-1b-v2"
+    assert body["setup"]["task_args"]["prompt_style"] == "smurf"
+    assert body["setup"]["generate_config"] == {"max_tokens": 256}
+    assert body["digest"] == {"samples": 2, "failed": 0, "flagged": 0,
+                              "sorts": ["order", "worst", "slowest", "longest"]}
+
+
+def test_samples_endpoint_pages_filters_and_sorts(client, store, tmp_path):
+    path = make_sample_log(tmp_path, samples=30)
+    store.sync([run(str(path), task="asr")])
+    rid = store.all()[0].row_id
+    page = client.get(f"/api/run/{rid}/samples?offset=10&limit=5").get_json()
+    assert page["total"] == 30 and page["offset"] == 10 and len(page["samples"]) == 5
+    assert page["samples"][0]["id"] == "03-000010"
+    narrow = client.get(f"/api/run/{rid}/samples?q=reference%202.&limit=100").get_json()
+    assert [r["id"] for r in narrow["samples"]] == ["03-000002"]
+    worst = client.get(f"/api/run/{rid}/samples?sort=worst&limit=3").get_json()
+    # wer is i/10 over samples 0..29, so the worst three are 29, 28, 27.
+    # (The plan said [0.9, 0.8, 0.7], which only fits a 10-sample log.)
+    assert [r["wer"] for r in worst["samples"]] == [2.9, 2.8, 2.7]
+    capped = client.get(f"/api/run/{rid}/samples?limit=5000").get_json()
+    assert capped["limit"] == 100
+
+
+def test_inspector_errors_are_typed(client, store, tmp_path):
+    store.sync([run(str(tmp_path / "gone.json"), task="asr")])
+    rid = store.all()[0].row_id
+    assert client.get(f"/api/run/{rid}/overview").status_code == 404
+    assert client.get(f"/api/run/{rid}/samples").status_code == 404
+    broken = tmp_path / "broken.json"
+    broken.write_text("{nope")
+    store.sync([run(str(broken), task="asr")])
+    broken_id = next(r.row_id for r in store.all() if r.path == str(broken))
+    response = client.get(f"/api/run/{broken_id}/overview")
+    assert response.status_code == 409 and response.get_json()["error"]
+    assert client.get("/api/run/9999/overview").status_code == 404

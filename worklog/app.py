@@ -12,14 +12,26 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 
 from .config import Config, load_config
+from .samples import Digest, DigestError, load_digest, select
 from .scanner import ScannedRun
 from .store import Store, open_store
 from .sync import sync_store
 from .views import build_snapshot
 
+#: Sort keys the samples endpoint accepts; anything else falls back to ``order``.
+_SORTS = ("order", "worst", "slowest", "longest")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _as_int(name: str, default: int) -> int:
+    """Query arg as an int; an unparsable value quietly means *default*."""
+    try:
+        return int(request.args.get(name, default))
+    except ValueError:
+        return default
 
 
 def _run_dict(run: ScannedRun) -> dict:
@@ -46,6 +58,11 @@ def _run_dict(run: ScannedRun) -> dict:
 def create_app(config: Config, store: Store, scan: Callable[[], None] | None = None) -> Flask:
     """Build the app; *scan* is the refresh hook (the real scanner's one pass)."""
     app = Flask(__name__, static_folder="static", static_url_path="/static")
+    samples_dir = config.cache.parent / "samples"
+
+    def load(row: ScannedRun) -> Digest:
+        """The run's digest from the sidecar cache; raises DigestError typed as HTTP."""
+        return load_digest(row.path, row.mtime_ns, row.size, samples_dir, config.roots)
 
     def snapshot() -> dict:
         return build_snapshot(
@@ -67,19 +84,13 @@ def create_app(config: Config, store: Store, scan: Callable[[], None] | None = N
 
     @app.get("/api/runs")
     def api_runs():
-        def as_int(name: str, default: int) -> int:
-            try:
-                return int(request.args.get(name, default))
-            except ValueError:
-                return default
-
         rows = store.history(
             campaign=request.args.get("campaign"),
             model=request.args.get("model"),
             benchmark=request.args.get("benchmark"),
             status=request.args.get("status"),
-            offset=as_int("offset", 0),
-            limit=as_int("limit", 50),
+            offset=_as_int("offset", 0),
+            limit=_as_int("limit", 50),
         )
         return jsonify({"runs": [_run_dict(row) for row in rows]})
 
@@ -89,6 +100,54 @@ def create_app(config: Config, store: Store, scan: Callable[[], None] | None = N
         if row is None:
             return jsonify({"error": f"no run {run_id}"}), 404
         return jsonify(_run_dict(row))
+
+    @app.get("/api/run/<int:run_id>/overview")
+    def api_run_overview(run_id: int):
+        row = store.get(run_id)
+        if row is None:
+            return jsonify({"error": f"no run {run_id}"}), 404
+        try:
+            digest = load(row)
+        except DigestError as err:
+            return jsonify({"error": err.message, "path": row.path}), err.status
+        setup = digest.overview
+        return jsonify({
+            "run": _run_dict(row),
+            "setup": setup,
+            "scores": setup["scores"],
+            "stats": setup["stats"],
+            "digest": {
+                "samples": len(digest.samples),
+                "failed": digest.failed,
+                "flagged": digest.flagged,
+                "sorts": digest.sorts,
+            },
+        })
+
+    @app.get("/api/run/<int:run_id>/samples")
+    def api_run_samples(run_id: int):
+        row = store.get(run_id)
+        if row is None:
+            return jsonify({"error": f"no run {run_id}"}), 404
+        try:
+            digest = load(row)
+        except DigestError as err:
+            return jsonify({"error": err.message, "path": row.path}), err.status
+        sort = request.args.get("sort", "order")
+        rows = select(
+            digest.samples,
+            q=request.args.get("q", ""),
+            sort=sort if sort in _SORTS else "order",
+            issues_only=request.args.get("filter") == "issues",
+        )
+        offset = max(_as_int("offset", 0), 0)
+        limit = min(max(_as_int("limit", 25), 1), 100)
+        return jsonify({
+            "total": len(rows),
+            "offset": offset,
+            "limit": limit,
+            "samples": rows[offset:offset + limit],
+        })
 
     @app.post("/api/refresh")
     def api_refresh():
