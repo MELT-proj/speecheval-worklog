@@ -558,7 +558,7 @@ def test_samples_endpoint_pages_filters_and_sorts(client, store, tmp_path):
     narrow = client.get(f"/api/run/{rid}/samples?q=reference%202.&limit=100").get_json()
     assert [r["id"] for r in narrow["samples"]] == ["03-000002"]
     worst = client.get(f"/api/run/{rid}/samples?sort=worst&limit=3").get_json()
-    assert [r["wer"] for r in worst["samples"]] == [0.9, 0.8, 0.7]
+    assert [r["wer"] for r in worst["samples"]] == [2.9, 2.8, 2.7]
     capped = client.get(f"/api/run/{rid}/samples?limit=5000").get_json()
     assert capped["limit"] == 100
 
@@ -803,7 +803,8 @@ def test_drilldown_and_feed_link_to_the_inspector(live_server):
         assert href.startswith("/inspect?run=") and "back=" in href
         page.click("#modal-close")
         page.wait_for_selector("#feed a.run")
-        assert page.get_attribute("#feed a.run", "href").startswith("/inspect?run=")
+        feed_href = page.get_attribute("#feed a.run", "href")
+        assert feed_href.startswith("/inspect?run=") and "back=" in feed_href
         browser.close()
 ```
 
@@ -815,12 +816,15 @@ Expected: FAIL — no `a.samples` inside the dialog.
 - [ ] **Step 3: Add the links**
 
 `matrix.js::drill`: add a `<th>Samples</th>` column and, per row,
-`<td><a class="samples" href="/inspect?run=${row.run_id}&back=${encodeURIComponent(location.hash)}">open</a></td>`,
+`<td><a class="samples" href="/inspect?run=${row.run_id}&back=${encodeURIComponent("/" + location.hash)}">open</a></td>`,
 keeping the existing `logpath` cell as the copy-on-click path.
 
 `feed.js::render`: wrap each `.run` block in
-`<a class="run" href="/inspect?run=${run.id}">…</a>` and add the matching
+`<a class="run" href="/inspect?run=${run.id}&back=${encodeURIComponent("/" + location.hash)}">…</a>` and add the matching
 `.feed a.run { color: inherit; text-decoration: none; }` rule to `style.css`.
+
+In both links, the `/` prefix before `location.hash` is required: the
+inspector only accepts same-origin relative paths as `back`.
 
 - [ ] **Step 4: Run the UI tests**
 
