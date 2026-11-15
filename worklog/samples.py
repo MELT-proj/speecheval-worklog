@@ -19,6 +19,7 @@ Two things worth knowing before changing anything here:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -448,6 +449,9 @@ def load_digest(path: str, mtime_ns: int, size: int, samples_dir: Path, roots: S
             digest = _build_digest(body, roots)
             _write_sidecar(sidecar, digest)
             _remove_sibling_sidecars(sidecar)
+            # Pruning is best-effort: the sidecar is valid even if cleanup fails.
+            with contextlib.suppress(Exception):
+                prune(samples_dir)
         try:
             return _read_sidecar(sidecar)
         except (json.JSONDecodeError, OSError, KeyError, TypeError, ValueError) as exc:

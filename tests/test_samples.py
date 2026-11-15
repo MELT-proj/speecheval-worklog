@@ -249,6 +249,27 @@ def test_new_fingerprint_rebuilds_and_drops_the_old_sidecar(tmp_path):
     assert f"-{second.st_mtime_ns}-{second.st_size}-v{SCHEMA_VERSION}.jsonl" in sidecars[0].name
 
 
+def test_load_digest_prunes_after_fresh_build(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_prune(samples_dir, budget_bytes=1024**3):
+        calls.append((samples_dir, budget_bytes))
+        return 0
+
+    monkeypatch.setattr("worklog.samples.prune", fake_prune)
+    log = make_sample_log(tmp_path, samples=2)
+    stat = log.stat()
+    digest = load_digest(str(log), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert digest.overview["task"] == "speech-asr-librispeech-validation-clean"
+    assert len(calls) == 1
+    assert calls[0][0] == tmp_path / "s"
+    assert calls[0][1] == 1024**3
+
+    # A cache hit must not trigger another prune sweep.
+    load_digest(str(log), stat.st_mtime_ns, stat.st_size, tmp_path / "s", [tmp_path])
+    assert len(calls) == 1
+
+
 def test_missing_and_broken_logs_raise_typed_errors(tmp_path):
     missing = tmp_path / "gone.json"
     with pytest.raises(DigestError) as err:
