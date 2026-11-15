@@ -29,7 +29,8 @@ from pathlib import Path
 
 #: Bumped whenever the digest layout changes; part of the sidecar name so old
 #: caches invalidate themselves instead of being parsed into wrong digests.
-SCHEMA_VERSION: int = 1
+#: v2 adds ``format_spec`` to the overview so the /inspect setup panel can render it.
+SCHEMA_VERSION: int = 2
 
 #: A log above this size is refused rather than read into memory.
 MAX_LOG_BYTES: int = 256 * 1024 * 1024

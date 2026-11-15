@@ -166,6 +166,54 @@ def test_overview_lifts_setup_and_generate_config(tmp_path):
     assert ov["context_files"]["system_prompt_file"] is None
 
 
+def test_overview_format_spec_from_sample_store_and_task_args(tmp_path):
+    spec = {"provider": "smurf", "apply_chat_template": True}
+    body = {
+        "eval": {
+            "task": "speech-asr-clean",
+            "model": "smurf//ckpt",
+            "task_args": {"prompt_style": "smurf"},
+            "model_args": {},
+            "dataset": {"name": "frozen", "location": "/frozen", "samples": 1},
+            "scorers": [],
+        },
+        "results": {"scores": []},
+        "stats": {},
+        "samples": [{"store": {"melteval:format_spec": spec}}],
+    }
+    assert overview_of(body, [tmp_path])["format_spec"] == spec
+
+    body_no_store = {
+        "eval": {
+            "task": "speech-asr-clean",
+            "model": "smurf//ckpt",
+            "task_args": {"prompt_style": "smurf", "format_spec": {"provider": "melt"}},
+            "model_args": {},
+            "dataset": {"name": "frozen", "location": "/frozen", "samples": 1},
+            "scorers": [],
+        },
+        "results": {"scores": []},
+        "stats": {},
+        "samples": [{}],
+    }
+    assert overview_of(body_no_store, [tmp_path])["format_spec"] == {"provider": "melt"}
+
+    body_none = {
+        "eval": {
+            "task": "speech-asr-clean",
+            "model": "smurf//ckpt",
+            "task_args": {"prompt_style": "smurf"},
+            "model_args": {},
+            "dataset": {"name": "frozen", "location": "/frozen", "samples": 1},
+            "scorers": [],
+        },
+        "results": {"scores": []},
+        "stats": {},
+        "samples": [{}],
+    }
+    assert overview_of(body_none, [tmp_path])["format_spec"] is None
+
+
 def test_digest_is_written_and_reused(tmp_path):
     log = make_sample_log(tmp_path, samples=3)
     stat = log.stat()
