@@ -184,8 +184,21 @@ def test_new_fingerprint_rebuilds_and_drops_the_old_sidecar(tmp_path):
     log = make_sample_log(tmp_path, samples=2)
     first = log.stat()
     load_digest(str(log), first.st_mtime_ns, first.st_size, tmp_path / "s", [tmp_path])
-    load_digest(str(log), first.st_mtime_ns, first.st_size + 1, tmp_path / "s", [tmp_path])
-    assert len(list((tmp_path / "s").glob("*.jsonl"))) == 1
+    old_sidecars = list((tmp_path / "s").glob("*.jsonl"))
+    assert len(old_sidecars) == 1
+    old_name = old_sidecars[0].name
+
+    # Rewrite the same log with a different sample count: real mtime/size change.
+    log = make_sample_log(tmp_path, samples=3)
+    second = log.stat()
+    assert (second.st_mtime_ns, second.st_size) != (first.st_mtime_ns, first.st_size)
+
+    digest = load_digest(str(log), first.st_mtime_ns, first.st_size, tmp_path / "s", [tmp_path])
+    assert len(digest.samples) == 3
+    sidecars = list((tmp_path / "s").glob("*.jsonl"))
+    assert len(sidecars) == 1
+    assert sidecars[0].name != old_name
+    assert f"-{second.st_mtime_ns}-{second.st_size}-v{SCHEMA_VERSION}.jsonl" in sidecars[0].name
 
 
 def test_missing_and_broken_logs_raise_typed_errors(tmp_path):

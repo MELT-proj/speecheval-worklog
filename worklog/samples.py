@@ -319,12 +319,7 @@ _LOCKS: dict[str, threading.Lock] = {}
 
 def _lock_for(path: Path) -> threading.Lock:
     """Return the lock associated with ``path``, creating it on first use."""
-    key = str(path)
-    lock = _LOCKS.get(key)
-    if lock is None:
-        lock = threading.Lock()
-        _LOCKS[key] = lock
-    return lock
+    return _LOCKS.setdefault(str(path), threading.Lock())
 
 
 def sidecar_path(samples_dir: Path, path: str, mtime_ns: int, size: int) -> Path:
@@ -416,20 +411,26 @@ def load_digest(path: str, mtime_ns: int, size: int, samples_dir: Path, roots: S
         body = json.loads(text)
     except json.JSONDecodeError as exc:
         raise DigestError(409, "log is not valid JSON") from exc
+    except UnicodeDecodeError as exc:
+        raise DigestError(409, "log is not valid UTF-8") from exc
     except OSError as exc:
         raise DigestError(404, f"log not readable: {exc}") from exc
+
+    if not isinstance(body, dict):
+        raise DigestError(409, "log is not a JSON object")
 
     sidecar = sidecar_path(samples_dir, path, current_mtime_ns, current_size)
     lock = _lock_for(sidecar)
     with lock:
-        rebuild = not sidecar.exists()
-        if sidecar.exists():
-            try:
-                return _read_sidecar(sidecar)
-            except DigestError:
-                rebuild = True
-            except (json.JSONDecodeError, OSError, KeyError, TypeError, ValueError):
-                rebuild = True
+        rebuild = False
+        try:
+            return _read_sidecar(sidecar)
+        except FileNotFoundError:
+            rebuild = True
+        except DigestError:
+            rebuild = True
+        except (json.JSONDecodeError, OSError, KeyError, TypeError, ValueError):
+            rebuild = True
         if rebuild:
             digest = _build_digest(body, roots)
             _write_sidecar(sidecar, digest)
@@ -440,23 +441,32 @@ def load_digest(path: str, mtime_ns: int, size: int, samples_dir: Path, roots: S
             raise DigestError(409, f"digest cache is corrupt: {exc}") from exc
 
 
+def _safe_stat(path: Path) -> os.stat_result | None:
+    """Return ``path.stat()`` or ``None`` if the file vanished."""
+    try:
+        return path.stat()
+    except OSError:
+        return None
+
+
 def prune(samples_dir: Path, budget_bytes: int = 1024**3) -> int:
     """Delete oldest sidecars while the directory is over ``budget_bytes``; return count removed."""
     if not samples_dir.exists():
         return 0
     files = [p for p in samples_dir.iterdir() if p.is_file() and p.suffix == ".jsonl"]
-    total = sum(p.stat().st_size for p in files)
+    stats = [_safe_stat(p) for p in files]
+    total = sum(s.st_size for s in stats if s is not None)
     if total <= budget_bytes:
         return 0
-    files.sort(key=lambda p: p.stat().st_mtime)
+    files_with_mtime = [(p, s) for p, s in zip(files, stats, strict=True) if s is not None]
+    files_with_mtime.sort(key=lambda item: item[1].st_mtime)
     removed = 0
-    for path in files:
+    for path, stat in files_with_mtime:
         if total <= budget_bytes:
             break
-        size = path.stat().st_size
         try:
             path.unlink()
-            total -= size
+            total -= stat.st_size
             removed += 1
         except OSError:
             continue
