@@ -4,3 +4,7 @@ __pycache__/
 .cache/
 *.sqlite
 .pytest_cache/
+
+# local virtualenv and uv lockfile (dependencies live in requirements*.txt)
+.venv/
+uv.lock
