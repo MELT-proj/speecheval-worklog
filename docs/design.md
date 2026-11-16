@@ -656,3 +656,57 @@ view, no editing or re-running. No new dependency, no change to the scanner
 or the SQLite schema beyond `run_id`. The 256 MB log cap stands — refusing an
 outlier with a clear message beats risking the host — and the sidecar cache
 is cache: rebuildable, disposable, budgeted.
+
+---
+
+# Part D — the password shield
+
+2026-11-16. This supersedes the one line of Part B that put authentication out of
+scope ("The link is shared by the human partner after the fact"). The link itself
+turned out to be the thing worth guarding. Spec:
+`docs/superpowers/specs/2026-11-16-password-login-design.md`; build plan:
+`docs/superpowers/plans/2026-11-16-password-login.md`.
+
+## D1. What it is
+
+One shared password, no usernames, no roles, no per-person data. It comes from
+`WORKLOG_PASSWORD` in the environment, never from `worklog.yaml`: this repository
+is public and the config is committed. With the variable unset the app stays open
+on a loopback address for development, and `main()` refuses to bind anywhere else
+with a message naming the variable. The password is a shield for an address, not
+an access-control system.
+
+Two alternatives were considered and dropped. HTTP Basic Auth is the smallest
+implementation but the browser owns the credentials: no real logout, a dialog on
+every new tab, and one undifferentiated challenge for pages and JSON. Offloading
+to nginx/Caddy avoids app code but adds a deployment requirement to every way the
+app is run, including `python app.py` on the workstation.
+
+## D2. The session
+
+`POST /login` compares the password with `hmac.compare_digest` and stores
+`session["auth"]` in Flask's signed cookie (`worklog_session`, `HttpOnly`,
+`SameSite=Lax`, seven days). The signing key is
+`HMAC-SHA256(random_salt, password)`, with the random salt generated once and
+kept in the SQLite `meta` table. That makes sessions survive a restart, makes a
+password change invalidate every existing session, and means the cache file
+alone does not contain a key that can mint one.
+
+The guard is a single `before_request` hook. A page request without a session is
+redirected to `/login?next=<path>`; an `/api/*` request gets
+`401 {"error": "authentication required"}` instead, because `fetch` follows
+redirects and would otherwise try to parse the login page as JSON. `/login`,
+`/logout` and `/static/*` stay open so the login page can load the stylesheet and
+no redirect loop exists. `next` is accepted only as a same-origin path — one
+leading `/`, not `//` or `/\`, no control characters — so a crafted login link
+cannot become an open redirect. The SPA treats a 401 on its four fetch sites as
+"the cookie expired" and navigates to the login page with the current view as
+`next`.
+
+Failed attempts are throttled in memory: five in ten minutes per
+`remote_addr`, then a 429 with `Retry-After`. The count is per process, and behind
+a reverse proxy the address is the proxy's, so it throttles everyone together.
+TLS is not the app's job: the documented deployment is an SSH tunnel to loopback
+HTTP, and an untrusted network needs a tunnel or a proxy that terminates HTTPS.
+The read-only rule is unchanged; the only new write is the one-time `auth.salt`
+row in the existing meta table.

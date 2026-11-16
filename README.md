@@ -24,7 +24,10 @@ re-scoring anything, re-reading audio, or needing the evaluation harness.
   cached under `<cache parent>/samples`.
 - Light and dark themes, remembered per browser (the toggle sits in the header;
   the first visit follows the OS preference).
-- **No authentication.** Bind loopback by default; share deliberately (below).
+- **One shared password, off by default.** Set `WORKLOG_PASSWORD` to require a
+  login; binding beyond loopback without it refuses to start. There are no
+  accounts and no roles — the password is a shield for the link, not an
+  access-control system.
 
 ## Install and run
 
@@ -37,14 +40,23 @@ python app.py                       # uses worklog.yaml, 127.0.0.1:8765
 python app.py --root /mnt/scratch-artemis/giuseppe/melt-data/eval-runs \
               --cache /mnt/scratch-artemis/giuseppe/worklog/worklog.sqlite \
               --port 8765
+WORKLOG_PASSWORD=… python app.py --host 0.0.0.0   # shared: login required
 ```
+
+Without `WORKLOG_PASSWORD` the bind address must stay on loopback
+(`127.0.0.1`, `localhost`, `::1`); a non-loopback host without one exits with a
+message instead of serving openly.
 
 The cache defaults to `/mnt/scratch-artemis/giuseppe/worklog/worklog.sqlite`
 (`$WORKLOG_CACHE` overrides), never `$HOME`: the scanner rewrites it every
 interval and the repo checkout lives on GlusterFS.
 
-Sharing: `--host 0.0.0.0` plus an SSH tunnel or a reverse proxy. There is no
-login, so only expose it to people you would give the numbers to anyway.
+Sharing: `--host 0.0.0.0` plus an SSH tunnel or a reverse proxy, with
+`WORKLOG_PASSWORD` set. The login cookie lasts seven days and **Sign out** sits
+in the header. Five failed attempts from one address in ten minutes are
+throttled; the counter is per process, and behind a reverse proxy the address it
+sees is the proxy's. The password does not encrypt traffic: on an untrusted
+network still use an SSH tunnel or an HTTPS reverse proxy.
 
 ## Configuration
 
@@ -62,6 +74,11 @@ login, so only expose it to people you would give the numbers to anyway.
 | `families` | matrix columns: `{name, task, benchmarks, direction?}` |
 | `metrics` | display label and `lower` direction per metric key |
 | `headline` | the metric a matrix cell shows per task |
+
+`WORKLOG_PASSWORD` is an environment variable, not a config key: this repository
+is public and `worklog.yaml` is committed. The only paths reachable without a
+session are `/login` and `/static/*` (the page shell and vendored libraries);
+everything else, including `/api/*` and `/inspect`, needs the password.
 
 Add a new campaign: drop its folder under a root and let `include` match it. Add
 a new benchmark: add its `melteval_benchmark` id to a family's `benchmarks` (and
@@ -142,6 +159,7 @@ worklog/scanner.py      inspect log -> one flat row
 worklog/store.py        SQLite cache, duplicate policy
 worklog/views.py        family matching, aggregation, snapshot payload
 worklog/samples.py      one log -> per-sample digest, sidecar cache
+worklog/auth.py         single-password login, session guard, login throttle
 worklog/app.py          Flask routes + scanner thread
 worklog/static/         page, style, matrix.js, charts.js, feed.js, app.js
 tests/                  unit + API + headless-browser tests
