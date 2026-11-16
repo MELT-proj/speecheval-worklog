@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -11,6 +12,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
+from .auth import install_auth, is_loopback
 from .config import Config, load_config
 from .samples import Digest, DigestError, load_digest, select
 from .scanner import ScannedRun
@@ -55,8 +57,13 @@ def _run_dict(run: ScannedRun) -> dict:
     }
 
 
-def create_app(config: Config, store: Store, scan: Callable[[], None] | None = None) -> Flask:
-    """Build the app; *scan* is the refresh hook (the real scanner's one pass)."""
+def create_app(
+    config: Config,
+    store: Store,
+    scan: Callable[[], None] | None = None,
+    password: str | None = None,
+) -> Flask:
+    """Build the app; *scan* is the refresh hook and *password* enables the shield."""
     app = Flask(__name__, static_folder="static", static_url_path="/static")
     samples_dir = config.cache.parent / "samples"
 
@@ -163,6 +170,7 @@ def create_app(config: Config, store: Store, scan: Callable[[], None] | None = N
     def api_health():
         return jsonify({"ok": True, "version": store.version()})
 
+    install_auth(app, store, password)
     return app
 
 
@@ -191,6 +199,12 @@ def main(argv: list[str] | None = None) -> None:
         },
     )
     store = open_store(config.cache, fallback_dir=Path.cwd() / ".cache")
+    password = os.environ.get("WORKLOG_PASSWORD") or None
+    if password is None and not is_loopback(config.host):
+        raise SystemExit(
+            f"refusing to listen on {config.host} without WORKLOG_PASSWORD; "
+            "set it, or use --host 127.0.0.1 for an open local dashboard"
+        )
     lock = threading.Lock()
 
     def scan_once() -> None:
@@ -198,7 +212,7 @@ def main(argv: list[str] | None = None) -> None:
             result = sync_store(config, store)
             store.set_meta("warnings", str(result.warnings))
 
-    app = create_app(config, store, scan=scan_once)
+    app = create_app(config, store, scan=scan_once, password=password)
 
     def loop() -> None:
         while True:
