@@ -39,7 +39,7 @@ def safe_next(value: str | None) -> str:
     """A same-origin path from a query parameter; anything else becomes ``/``."""
     if not value or not value.startswith("/"):
         return DEFAULT_NEXT
-    if value.startswith(("//", "/\\")) or any(ch in value for ch in "\r\n\0"):
+    if value.startswith(("//", "/\\")) or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value):
         return DEFAULT_NEXT
     return value
 
@@ -126,7 +126,7 @@ def install_auth(app: Flask, store: Store, password: str | None) -> None:
     def login_url(**params: str) -> str:
         return "/login?" + urlencode(params)
 
-    @app.get("/login")
+    @app.get("/login", strict_slashes=False)
     def login_page():
         if not enabled or session.get("auth") is True:
             return redirect(DEFAULT_NEXT)
@@ -168,7 +168,7 @@ def install_auth(app: Flask, store: Store, password: str | None) -> None:
     @app.before_request
     def require_login():
         path = request.path
-        if path in ("/login", "/logout") or path.startswith("/static/"):
+        if path in ("/login", "/login/", "/logout") or path.startswith("/static/"):
             return None
         if session.get("auth") is True:
             return None

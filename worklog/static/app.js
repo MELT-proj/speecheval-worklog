@@ -159,11 +159,7 @@ window.Worklog = window.Worklog || {};
     button.disabled = true;
     button.textContent = "Scanning…";
     try {
-      const response = await fetch("/api/refresh", { method: "POST" });
-      if (response.status === 401) {
-        W.loginRedirect();
-        return;
-      }
+      await fetch("/api/refresh", { method: "POST" });
       await load();
     } catch (error) {
       document.getElementById("statusline").textContent = `refresh failed: ${error.message}`;

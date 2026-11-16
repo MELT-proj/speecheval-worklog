@@ -20,14 +20,24 @@ def test_safe_next_only_allows_same_origin_paths():
     assert safe_next("//example.org/") == "/"
     assert safe_next("/\\example.org") == "/"
     assert safe_next("/a\r\nb") == "/"
+    assert safe_next("/\t/evil.example") == "/"
+    assert safe_next("/\x0b/evil.example") == "/"
+    assert safe_next("/\x0c/evil.example") == "/"
+    assert safe_next("/\x7f/evil.example") == "/"
 
 
 def test_session_secret_is_stable_and_password_bound(tmp_path):
     store = Store(tmp_path / "w.sqlite")
     first = session_secret(store, "hunter2")
     assert first == session_secret(store, "hunter2")
-    assert first != session_secret(store, "different")
-    assert store.get_meta("auth.salt")
+    different = session_secret(store, "different")
+    assert first != different
+    salt = store.get_meta("auth.salt")
+    assert salt and salt != first and len(salt) == 64
+    raw = (tmp_path / "w.sqlite").read_bytes()
+    assert b"hunter2" not in raw
+    assert first.encode() not in raw
+    assert different.encode() not in raw
     other = Store(tmp_path / "other.sqlite")
     assert session_secret(other, "hunter2") != first
 
@@ -81,6 +91,11 @@ def test_login_logout_and_the_session_cookie(cfg, store, tmp_path):
     good = client.post("/login", data={"password": "s3cret", "next": "/inspect?run=3"})
     assert good.status_code == 303
     assert good.headers["Location"] == "/inspect?run=3"
+    cookie = good.headers["Set-Cookie"]
+    assert "worklog_session=" in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=Lax" in cookie
+    assert "Expires=" in cookie
     assert client.get_cookie("worklog_session") is not None
     assert client.get("/api/snapshot").status_code == 200
     out = client.post("/logout")
@@ -90,7 +105,7 @@ def test_login_logout_and_the_session_cookie(cfg, store, tmp_path):
 
 def test_login_rejects_an_off_site_next(cfg, store, tmp_path):
     client = locked_app(cfg, store, tmp_path).test_client()
-    for target in ("//evil.example/x", "https://evil.example/x", "/\\evil.example"):
+    for target in ("//evil.example/x", "https://evil.example/x", "/\\evil.example", "/\t/evil.example"):
         response = client.post("/login", data={"password": "s3cret", "next": target})
         assert response.headers["Location"] == "/"
 
@@ -140,3 +155,13 @@ def test_login_page_has_the_form(cfg, store, tmp_path):
     assert page.status_code == 200
     assert b'name="password"' in page.data
     assert b'id="login-next"' in page.data
+
+
+def test_login_with_a_trailing_slash_lands_on_the_dashboard(cfg, store, tmp_path):
+    client = locked_app(cfg, store, tmp_path).test_client()
+    assert client.get("/login/").status_code == 200
+    response = client.post("/login", data={"password": "s3cret", "next": "/login/"})
+    assert response.status_code == 303
+    assert response.headers["Location"] == "/login/"
+    redirect = client.get("/login/")
+    assert redirect.status_code == 302 and redirect.headers["Location"] == "/"
