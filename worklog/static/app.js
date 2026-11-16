@@ -132,6 +132,10 @@ window.Worklog = window.Worklog || {};
   async function load(version) {
     const url = version ? `/api/snapshot?version=${encodeURIComponent(version)}` : "/api/snapshot";
     const response = await fetch(url, { cache: "no-store" });
+    if (response.status === 401) {
+      W.loginRedirect();
+      return false;
+    }
     if (response.status === 204) return false;
     if (!response.ok) throw new Error(`snapshot: HTTP ${response.status}`);
     snapshot = await response.json();
@@ -155,7 +159,11 @@ window.Worklog = window.Worklog || {};
     button.disabled = true;
     button.textContent = "Scanning…";
     try {
-      await fetch("/api/refresh", { method: "POST" });
+      const response = await fetch("/api/refresh", { method: "POST" });
+      if (response.status === 401) {
+        W.loginRedirect();
+        return;
+      }
       await load();
     } catch (error) {
       document.getElementById("statusline").textContent = `refresh failed: ${error.message}`;

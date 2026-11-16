@@ -133,3 +133,10 @@ def test_non_loopback_without_a_password_refuses_to_start(monkeypatch, tmp_path)
     with pytest.raises(SystemExit) as err:
         main(["--host", "0.0.0.0", "--cache", str(tmp_path / "w.sqlite")])
     assert "WORKLOG_PASSWORD" in str(err.value)
+
+
+def test_login_page_has_the_form(cfg, store, tmp_path):
+    page = locked_app(cfg, store, tmp_path).test_client().get("/login")
+    assert page.status_code == 200
+    assert b'name="password"' in page.data
+    assert b'id="login-next"' in page.data

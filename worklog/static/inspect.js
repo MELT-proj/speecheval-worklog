@@ -305,6 +305,10 @@ window.Worklog = window.Worklog || {};
     }
     try {
       const response = await fetch(`/api/run/${encodeURIComponent(runId)}/overview`, { cache: "no-store" });
+      if (response.status === 401) {
+        W.loginRedirect();
+        return;
+      }
       if (!response.ok) {
         const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
         setText("run-title", "Error");
@@ -361,6 +365,10 @@ window.Worklog = window.Worklog || {};
     try {
       const response = await fetch(url, { cache: "no-store" });
       if (mySeq !== requestSeq) return;
+      if (response.status === 401) {
+        W.loginRedirect();
+        return;
+      }
       if (!response.ok) {
         const body = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
         setHtml("samples", `<div class="placeholder">${W.escape(body.error || `HTTP ${response.status}`)}</div>`);

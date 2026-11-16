@@ -122,6 +122,12 @@ window.Worklog = window.Worklog || {};
   })();
   W.theme = theme;
 
+  /* Send the browser to the login page, returning to the current view. */
+  W.loginRedirect = function () {
+    const here = location.pathname + location.search + location.hash;
+    location.assign("/login?next=" + encodeURIComponent(here));
+  };
+
   W.escape = function (text) {
     return String(text === null || text === undefined ? "" : text).replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
   };

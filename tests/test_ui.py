@@ -476,3 +476,77 @@ def test_drilldown_and_feed_link_to_the_inspector(live_server):
         feed_href = page.get_attribute("#feed a.run", "href")
         assert feed_href.startswith("/inspect?run=") and "back=" in feed_href
         browser.close()
+
+
+@pytest.fixture
+def locked_server(tmp_path):
+    cfg = load_config(overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")})
+    store = Store(cfg.cache)
+    app = create_app(cfg, store, password="letmein")
+    server = make_server("127.0.0.1", 0, app)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+def test_login_shields_the_dashboard(locked_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context()
+        page = context.new_page()
+        page.goto(locked_server)
+        page.wait_for_selector("#login-password")
+        assert "/login" in page.url
+
+        page.fill("#login-password", "wrong")
+        page.click("form.login-card button[type=submit]")
+        page.wait_for_selector("#login-error:not([hidden])")
+        assert "not right" in page.inner_text("#login-error")
+
+        page.fill("#login-password", "letmein")
+        page.click("form.login-card button[type=submit]")
+        page.wait_for_selector("#kpis .kpi")
+        assert page.evaluate("() => fetch('/api/snapshot').then((r) => r.status)") == 200
+
+        context.clear_cookies()
+        page.click("#refresh")
+        page.wait_for_selector("#login-password")
+
+        page.fill("#login-password", "letmein")
+        page.click("form.login-card button[type=submit]")
+        page.wait_for_selector("#refresh")
+        page.click("form[action='/logout'] button")
+        page.wait_for_selector("#login-password")
+        assert page.evaluate("() => fetch('/api/snapshot').then((r) => r.status)") == 401
+        browser.close()
+
+
+@pytest.fixture
+def locked_inspector_server(tmp_path):
+    path = make_sample_log(tmp_path, samples=3)
+    store = Store(tmp_path / "w.sqlite")
+    store.sync([_scan(path)])
+    cfg = dataclasses.replace(load_config(), cache=tmp_path / "w.sqlite")
+    app = create_app(cfg, store, password="letmein")
+    server = make_server("127.0.0.1", 0, app)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}", store.all()[0].row_id
+    server.shutdown()
+
+
+def test_inspector_sends_an_expired_session_to_login(locked_inspector_server):
+    base, rid = locked_inspector_server
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context()
+        page = context.new_page()
+        page.goto(f"{base}/inspect?run={rid}")
+        page.wait_for_selector("#login-password")
+        page.fill("#login-password", "letmein")
+        page.click("form.login-card button[type=submit]")
+        page.wait_for_selector("#samples .sample")
+
+        context.clear_cookies()
+        page.fill("#sample-search", "reference 1.")
+        page.wait_for_selector("#login-password")
+        browser.close()
