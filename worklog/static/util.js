@@ -154,16 +154,23 @@ window.Worklog = window.Worklog || {};
     return mode === "benchmark" ? row.benchmark : W.languageOf(row);
   };
 
-  /* The campaign / model-group / language filter every renderer applies. */
-  W.visibleSlices = function (snapshot, state) {
+  /* Rows passing the campaign and model-group filters, before the language filter. */
+  W.baseSlices = function (snapshot, state) {
     return snapshot.slices.filter(
       (slice) =>
         (!state.campaign || slice.campaign === state.campaign) &&
-        (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily) &&
-        (!state.language ||
-          slice.lang === state.language ||
-          slice.src === state.language ||
-          slice.tgt === state.language)
+        (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily)
+    );
+  };
+
+  /* The campaign / model-group / language filter every renderer applies. */
+  W.visibleSlices = function (snapshot, state) {
+    return W.baseSlices(snapshot, state).filter(
+      (slice) =>
+        !state.language ||
+        slice.lang === state.language ||
+        slice.src === state.language ||
+        slice.tgt === state.language
     );
   };
 
@@ -171,25 +178,33 @@ window.Worklog = window.Worklog || {};
      A model that never ran a family does not veto it; a model that ran it and
      has no finite value for `metric` there does. */
   W.commonColumns = function (snapshot, state, task, metric) {
-    const rows = W.visibleSlices(snapshot, state).filter((row) => row.task === task);
+    const group = (rows) => {
+      const byFamily = new Map();
+      for (const row of rows) {
+        if (!byFamily.has(row.family)) byFamily.set(row.family, []);
+        byFamily.get(row.family).push(row);
+      }
+      return byFamily;
+    };
+    /* Participation is decided before the language filter, so a model that ran
+       the family but not the selected language still vetoes that language. */
+    const byFamily = group(W.baseSlices(snapshot, state).filter((row) => row.task === task));
+    const scoped = group(W.visibleSlices(snapshot, state).filter((row) => row.task === task));
     const models = snapshot.filters.models.filter((model) =>
       W.modelVisible(snapshot, state, model, task)
     );
-    const byFamily = new Map();
-    for (const row of rows) {
-      if (!byFamily.has(row.family)) byFamily.set(row.family, []);
-      byFamily.get(row.family).push(row);
-    }
     const common = new Map();
     for (const [family, familyRows] of byFamily) {
       const axis = W.axisFor(familyRows);
+      const scopedRows = scoped.get(family) || [];
       let kept = null;
       for (const model of models) {
-        const mine = familyRows.filter((row) => row.model === model);
-        if (!mine.length) continue;
+        if (!familyRows.some((row) => row.model === model)) continue;
         const columns = new Set();
-        for (const row of mine) {
-          if (Number.isFinite(row.metrics[metric])) columns.add(W.columnOf(row, axis.mode));
+        for (const row of scopedRows) {
+          if (row.model === model && Number.isFinite(row.metrics[metric])) {
+            columns.add(W.columnOf(row, axis.mode));
+          }
         }
         kept = kept === null ? columns : new Set([...kept].filter((value) => columns.has(value)));
       }

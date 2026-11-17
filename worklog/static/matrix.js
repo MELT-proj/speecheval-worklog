@@ -266,8 +266,11 @@ window.Worklog = window.Worklog || {};
       })
       .join("");
 
+    const hintLine = commonOn
+      ? `${rows.length} of ${all.length} ${unit} · ${W.escape(rule.label)} · common only · click a path to copy it`
+      : `${all.length} slice(s) · ${W.escape(rule.label)} · click a path to copy it`;
     body.innerHTML = `
-      <p class="hint">${rows.length} of ${all.length} ${unit} · ${W.escape(rule.label)}${commonOn ? " · common only" : ""} · click a path to copy it</p>
+      <p class="hint">${hintLine}</p>
       <table class="matrix-table detail">
         <thead><tr><th>Slice</th><th>${W.escape(rule.label)}</th><th>Samples</th><th>Status</th><th>Log</th><th>Inspect</th></tr></thead>
         <tbody>${lines || '<tr><td colspan="6">No slices match the current filters.</td></tr>'}</tbody>

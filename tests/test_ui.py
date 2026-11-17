@@ -815,3 +815,52 @@ def test_common_languages_drilldown_reports_the_shrink(coverage_server):
         assert "common only" in body
         assert page.locator("#modal-body tbody tr").count() == 2
         browser.close()
+
+
+def test_common_languages_language_filter_still_vetoes(coverage_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(coverage_server)
+        page.wait_for_function("window.Worklog && window.Worklog.matrix")
+        snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+        page.evaluate(
+            "([snap, state]) => window.Worklog.matrix.render(snap, state)",
+            [snapshot, {"aggregate": "macro", "language": "fr", "common": {"asr": True}}],
+        )
+        asr = page.locator(".matrix-block").nth(0)
+        assert "every visible model" in asr.inner_text()
+        page.evaluate(
+            "([snap, state]) => window.Worklog.charts.render(snap, state)",
+            [
+                snapshot,
+                {
+                    "aggregate": "macro",
+                    "language": "fr",
+                    "heatmap": "VoxPopuli",
+                    "common": {"asr": True},
+                },
+            ],
+        )
+        assert "every visible model" in page.inner_text("#heatmap")
+        browser.close()
+
+
+def test_common_languages_drilldown_keeps_the_plain_header_when_unticked(coverage_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(coverage_server)
+        page.wait_for_function("window.Worklog && window.Worklog.matrix")
+        snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+        page.evaluate(
+            """([snap, state]) => window.Worklog.matrix.drill(
+                 snap, state, 'canary-1b-v2', 'VoxPopuli', 'asr', 'corpus_wer_raw')""",
+            [snapshot, {"aggregate": "macro"}],
+        )
+        page.wait_for_selector("#modal[open]")
+        body = page.inner_text("#modal-body")
+        assert "3 slice(s)" in body
+        assert "common only" not in body
+        assert page.locator("#modal-body tbody tr").count() == 3
+        browser.close()
