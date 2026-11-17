@@ -411,6 +411,18 @@ Charts are ECharts; the tables are Tabulator (sortable, resizable, sticky
 header). Both vendored under `static/vendor/`. All filtering is client-side on
 the snapshot; only the feed paginates.
 
+### B5b. Common-languages filter
+
+Each task table carries a "common languages only" checkbox. Ticked, the cell
+aggregates are recomputed over the columns (languages, or benchmark variants
+for LibriSpeech) every visible model of that family scored at the selected
+metric; the heatmap axis and the drill-down list follow the same set. The
+intersection is per family, because one global ASR intersection would reduce to
+English and delete VoxPopuli. A model that never ran a benchmark does not veto
+it, and a column with a pending metric is not common. The cell label shows
+`k/N` on the reduced set, and an empty intersection is reported as such rather
+than drawn.
+
 ## B6. Live refresh
 
 Client polls `/api/snapshot?version=` every 10 s; `204` means nothing changed.

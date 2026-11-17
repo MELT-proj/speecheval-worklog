@@ -234,9 +234,14 @@ window.Worklog = window.Worklog || {};
   function drill(snapshot, state, model, family, task, metric) {
     const matrix = snapshot.matrix[task];
     const rule = metricRule(matrix, metric);
-    const rows = W.visibleSlices(snapshot, state)
+    const all = W.visibleSlices(snapshot, state)
       .filter((slice) => slice.model === model && slice.family === family && slice.task === task)
       .sort((a, b) => (b.metrics[metric] ?? -Infinity) - (a.metrics[metric] ?? -Infinity));
+    const commonOn = !!(state.common && state.common[task]);
+    const common = commonOn ? W.commonColumns(snapshot, state, task, metric) : null;
+    const rows = commonOn ? all.filter((row) => W.keepsRow(common, row)) : all;
+    const entry = commonOn ? common.get(family) : null;
+    const unit = entry && entry.mode === "benchmark" ? "variants" : "languages";
 
     const title = document.getElementById("modal-title");
     const body = document.getElementById("modal-body");
@@ -262,7 +267,7 @@ window.Worklog = window.Worklog || {};
       .join("");
 
     body.innerHTML = `
-      <p class="hint">${rows.length} slice(s) · ${W.escape(rule.label)} · click a path to copy it</p>
+      <p class="hint">${rows.length} of ${all.length} ${unit} · ${W.escape(rule.label)}${commonOn ? " · common only" : ""} · click a path to copy it</p>
       <table class="matrix-table detail">
         <thead><tr><th>Slice</th><th>${W.escape(rule.label)}</th><th>Samples</th><th>Status</th><th>Log</th><th>Inspect</th></tr></thead>
         <tbody>${lines || '<tr><td colspan="6">No slices match the current filters.</td></tr>'}</tbody>

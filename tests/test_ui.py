@@ -795,3 +795,23 @@ def test_common_languages_heatmap_explains_an_empty_axis(coverage_server):
         assert "every visible model" in page.inner_text("#heatmap")
         assert page.locator("#heatmap canvas").count() == 0
         browser.close()
+
+
+def test_common_languages_drilldown_reports_the_shrink(coverage_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(coverage_server)
+        page.wait_for_function("window.Worklog && window.Worklog.matrix")
+        snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+        page.evaluate(
+            """([snap, state]) => window.Worklog.matrix.drill(
+                 snap, state, 'canary-1b-v2', 'VoxPopuli', 'asr', 'corpus_wer_raw')""",
+            [snapshot, {"aggregate": "macro", "common": {"asr": True}}],
+        )
+        page.wait_for_selector("#modal[open]")
+        body = page.inner_text("#modal-body")
+        assert "2 of 3 languages" in body
+        assert "common only" in body
+        assert page.locator("#modal-body tbody tr").count() == 2
+        browser.close()
