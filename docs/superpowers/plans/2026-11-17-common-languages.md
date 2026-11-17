@@ -448,7 +448,7 @@ def test_common_languages_heatmap_explains_an_empty_axis(coverage_server):
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `LD_LIBRARY_PATH=$(cat /tmp/opencode/pwlibs.path) pytest tests/test_ui.py -q -k common_languages_heatmap`
+Run: `LD_LIBRARY_PATH=$(cat /tmp/opencode/pwlibs.path) pytest tests/test_ui.py -q -k "common_languages and heatmap"`
 Expected: FAIL — the axis still lists `fr`, and the empty case draws a chart.
 
 - [ ] **Step 3: Filter the axis and the rows, and say why**
@@ -457,7 +457,7 @@ In `charts.js` `render`, once `metric` and `rows` are known: when `state.common 
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `LD_LIBRARY_PATH=$(cat /tmp/opencode/pwlibs.path) pytest tests/test_ui.py -q -k common_languages_heatmap`
+Run: `LD_LIBRARY_PATH=$(cat /tmp/opencode/pwlibs.path) pytest tests/test_ui.py -q -k "common_languages and heatmap"`
 Expected: PASS (two tests).
 
 - [ ] **Step 5: Commit**
@@ -529,7 +529,7 @@ than drawn.
 - [ ] **Step 4: Run the full suite**
 
 Run: `LD_LIBRARY_PATH=$(cat /tmp/opencode/pwlibs.path) pytest tests -q`
-Expected: PASS — every test, including the five new ones and the existing ten browser tests.
+Expected: PASS — every test, including the eight new browser tests and the existing ones.
 
 - [ ] **Step 5: Commit**
 
