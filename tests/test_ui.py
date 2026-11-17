@@ -750,3 +750,48 @@ def test_common_languages_empty_state_keeps_the_control(coverage_server):
         assert "every visible model" in st.inner_text()
         assert page.locator("#common-st").is_checked()
         browser.close()
+
+
+def test_common_languages_shrinks_heatmap(coverage_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(coverage_server)
+        page.wait_for_function("window.Worklog && window.Worklog.charts")
+        tabs = page.locator("#heatmap-tabs .tab").all_inner_texts()
+        snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+        page.evaluate(
+            "([snap, state]) => window.Worklog.charts.render(snap, state)",
+            [snapshot, {"aggregate": "macro", "heatmap": "VoxPopuli"}],
+        )
+        option = page.evaluate(
+            "() => echarts.getInstanceByDom(document.getElementById('heatmap')).getOption()"
+        )
+        assert option["xAxis"][0]["data"] == ["de", "en", "fr"]
+        page.evaluate(
+            "([snap, state]) => window.Worklog.charts.render(snap, state)",
+            [snapshot, {"aggregate": "macro", "heatmap": "VoxPopuli", "common": {"asr": True}}],
+        )
+        option = page.evaluate(
+            "() => echarts.getInstanceByDom(document.getElementById('heatmap')).getOption()"
+        )
+        assert option["xAxis"][0]["data"] == ["de", "en"]
+        assert "common only" in page.inner_text("#heatmap-hint")
+        assert tabs == page.locator("#heatmap-tabs .tab").all_inner_texts()
+        browser.close()
+
+
+def test_common_languages_heatmap_explains_an_empty_axis(coverage_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(coverage_server)
+        page.wait_for_function("window.Worklog && window.Worklog.charts")
+        snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+        page.evaluate(
+            "([snap, state]) => window.Worklog.charts.render(snap, state)",
+            [snapshot, {"aggregate": "macro", "heatmap": "FLEURS XtoEN", "common": {"st": True}}],
+        )
+        assert "every visible model" in page.inner_text("#heatmap")
+        assert page.locator("#heatmap canvas").count() == 0
+        browser.close()

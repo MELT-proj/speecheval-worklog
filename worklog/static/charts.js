@@ -96,12 +96,27 @@ window.Worklog = window.Worklog || {};
       lower: snapshot.matrix[task].lower,
     };
 
-    const rows = slices.filter((slice) => slice.family === family && slice.task === task);
+    let rows = slices.filter((slice) => slice.family === family && slice.task === task);
     const models = snapshot.filters.models.filter(
       (model) =>
         W.modelVisible(snapshot, state, model, task) && rows.some((row) => row.model === model)
     );
     const axis = W.axisFor(rows);
+    const commonOn = !!(state.common && state.common[task]);
+    if (commonOn) {
+      const common = W.commonColumns(snapshot, state, task, metric);
+      const entry = common.get(family);
+      rows = rows.filter((row) => W.keepsRow(common, row));
+      axis.values = entry ? axis.values.filter((value) => entry.columns.has(value)) : [];
+      if (!axis.values.length) {
+        showPlaceholder(
+          el,
+          hint,
+          `${family} · common only: no language has a result for every visible model.`
+        );
+        return;
+      }
+    }
     if (!rows.length || !axis.values.length) {
       showPlaceholder(el, hint, "No per-language results for this family yet.");
       return;
@@ -209,7 +224,7 @@ window.Worklog = window.Worklog || {};
       ],
     });
     if (hint) {
-      hint.textContent = `${family} · ${rule.label}${percent ? " (%)" : ""}${rule.lower ? " · lower is better" : ""}`;
+      hint.textContent = `${family} · ${rule.label}${percent ? " (%)" : ""}${rule.lower ? " · lower is better" : ""}${commonOn ? " · common only" : ""}`;
     }
   }
 
