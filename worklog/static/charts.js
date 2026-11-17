@@ -4,25 +4,6 @@ window.Worklog = window.Worklog || {};
 (function (W) {
   let chart = null;
 
-  function languageOf(row) {
-    if (row.lang) return row.lang;
-    if (row.direction === "enx") return row.tgt || row.src;
-    if (row.direction === "xen") return row.src || row.tgt;
-    return row.tgt || row.src;
-  }
-
-  function visible(snapshot, state) {
-    return snapshot.slices.filter(
-      (slice) =>
-        (!state.campaign || slice.campaign === state.campaign) &&
-        (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily) &&
-        (!state.language ||
-          slice.lang === state.language ||
-          slice.src === state.language ||
-          slice.tgt === state.language)
-    );
-  }
-
   function taskForFamily(snapshot, family) {
     for (const [task, matrix] of Object.entries(snapshot.matrix)) {
       if (matrix.cells.some((cell) => cell.family === family)) return task;
@@ -32,19 +13,7 @@ window.Worklog = window.Worklog || {};
 
   /* Families with results under the campaign/group/language filters, in config order. */
   function familiesWithResults(snapshot, state) {
-    const present = new Set(
-      snapshot.slices
-        .filter(
-          (slice) =>
-            (!state.campaign || slice.campaign === state.campaign) &&
-            (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily) &&
-            (!state.language ||
-              slice.lang === state.language ||
-              slice.src === state.language ||
-              slice.tgt === state.language)
-        )
-        .map((slice) => slice.family)
-    );
+    const present = new Set(W.visibleSlices(snapshot, state).map((slice) => slice.family));
     return snapshot.filters.families.filter(
       (family) =>
         present.has(family) &&
@@ -67,20 +36,6 @@ window.Worklog = window.Worklog || {};
     const cut = prefix.lastIndexOf("-");
     if (cut > 0) prefix = prefix.slice(0, cut + 1);
     return name.startsWith(prefix) && name.length > prefix.length ? name.slice(prefix.length) : name;
-  }
-
-  /* Columns are benchmarks when the family has no language axis (LibriSpeech). */
-  function axisFor(rows) {
-    const languages = [...new Set(rows.map(languageOf).filter(Boolean))].sort();
-    const benchmarks = [...new Set(rows.map((row) => row.benchmark))].sort();
-    if (benchmarks.length > 1 && languages.length <= 1) {
-      return { mode: "benchmark", values: benchmarks };
-    }
-    return { mode: "language", values: languages };
-  }
-
-  function columnOf(row, mode) {
-    return mode === "benchmark" ? row.benchmark : languageOf(row);
   }
 
   function columnLabel(axis, value) {
@@ -120,7 +75,7 @@ window.Worklog = window.Worklog || {};
     const el = document.getElementById("heatmap");
     const hint = document.getElementById("heatmap-hint");
     if (!el) return;
-    const slices = visible(snapshot, state);
+    const slices = W.visibleSlices(snapshot, state);
     const families = familiesWithResults(snapshot, state);
     if (!families.length) {
       renderTabs([], "");
@@ -146,7 +101,7 @@ window.Worklog = window.Worklog || {};
       (model) =>
         W.modelVisible(snapshot, state, model, task) && rows.some((row) => row.model === model)
     );
-    const axis = axisFor(rows);
+    const axis = W.axisFor(rows);
     if (!rows.length || !axis.values.length) {
       showPlaceholder(el, hint, "No per-language results for this family yet.");
       return;
@@ -158,7 +113,7 @@ window.Worklog = window.Worklog || {};
     rows.forEach((row) => {
       const value = row.metrics[metric];
       if (!Number.isFinite(value)) return;
-      const x = axis.values.indexOf(columnOf(row, axis.mode));
+      const x = axis.values.indexOf(W.columnOf(row, axis.mode));
       const y = models.indexOf(row.model);
       if (x < 0 || y < 0) return;
       const key = `${x}|${y}`;

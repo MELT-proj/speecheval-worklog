@@ -550,3 +550,34 @@ def test_inspector_sends_an_expired_session_to_login(locked_inspector_server):
         page.fill("#sample-search", "reference 1.")
         page.wait_for_selector("#login-password")
         browser.close()
+
+
+def test_column_helpers_are_shared(live_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(live_server)
+        page.wait_for_function("() => !!(window.Worklog && typeof window.Worklog.axisFor === 'function')")
+        assert page.evaluate(
+            """() => window.Worklog.axisFor([
+                 {benchmark: 'librispeech-validation-clean', lang: 'en'},
+                 {benchmark: 'librispeech-validation-other', lang: 'en'},
+               ])"""
+        ) == {
+            "mode": "benchmark",
+            "values": ["librispeech-validation-clean", "librispeech-validation-other"],
+        }
+        assert page.evaluate(
+            """() => window.Worklog.axisFor([
+                 {benchmark: 'voxpopuli-dev', lang: 'de'},
+                 {benchmark: 'voxpopuli-dev', lang: 'en'},
+               ])"""
+        ) == {"mode": "language", "values": ["de", "en"]}
+        assert page.evaluate(
+            """() => {
+                 const W = window.Worklog;
+                 const row = {lang: null, direction: 'xen', src: 'de', tgt: 'en'};
+                 return [W.languageOf(row), W.columnOf(row, 'language')];
+               }"""
+        ) == ["de", "de"]
+        browser.close()

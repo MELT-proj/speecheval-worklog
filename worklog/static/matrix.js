@@ -34,18 +34,6 @@ window.Worklog = window.Worklog || {};
     };
   }
 
-  function visibleSlices(snapshot, state) {
-    return snapshot.slices.filter(
-      (slice) =>
-        (!state.campaign || slice.campaign === state.campaign) &&
-        (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily) &&
-        (!state.language ||
-          slice.src === state.language ||
-          slice.tgt === state.language ||
-          slice.lang === state.language)
-    );
-  }
-
   function cellFor(rows, metric, state) {
     const values = rows
       .filter((row) => Number.isFinite(row.metrics[metric]))
@@ -69,7 +57,7 @@ window.Worklog = window.Worklog || {};
       return matrix.cells.some((cell) => cell.family === name);
     });
     if (!families.length) return null;
-    const slices = visibleSlices(snapshot, state).filter((slice) => slice.task === task);
+    const slices = W.visibleSlices(snapshot, state).filter((slice) => slice.task === task);
     const models = snapshot.filters.models.filter((model) =>
       W.modelVisible(snapshot, state, model, task)
     );
@@ -186,7 +174,7 @@ window.Worklog = window.Worklog || {};
   }
 
   function renderUnclassified(snapshot, state) {
-    const rows = visibleSlices(snapshot, state).filter((slice) => slice.family === "unclassified");
+    const rows = W.visibleSlices(snapshot, state).filter((slice) => slice.family === "unclassified");
     if (!rows.length) return null;
     const block = document.createElement("section");
     block.className = "matrix-block";
@@ -212,7 +200,7 @@ window.Worklog = window.Worklog || {};
   function drill(snapshot, state, model, family, task, metric) {
     const matrix = snapshot.matrix[task];
     const rule = metricRule(matrix, metric);
-    const rows = visibleSlices(snapshot, state)
+    const rows = W.visibleSlices(snapshot, state)
       .filter((slice) => slice.model === model && slice.family === family && slice.task === task)
       .sort((a, b) => (b.metrics[metric] ?? -Infinity) - (a.metrics[metric] ?? -Infinity));
 

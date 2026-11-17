@@ -128,6 +128,45 @@ window.Worklog = window.Worklog || {};
     location.assign("/login?next=" + encodeURIComponent(here));
   };
 
+  /* ---- slice columns ---------------------------------------------------- */
+
+  /* A slice's column within its family: its language, or its benchmark when the
+     family has no language axis (LibriSpeech). Shared by the matrix, the
+     heatmap and the common-languages filter so they cannot disagree. */
+  W.languageOf = function (row) {
+    if (row.lang) return row.lang;
+    if (row.direction === "enx") return row.tgt || row.src;
+    if (row.direction === "xen") return row.src || row.tgt;
+    return row.tgt || row.src;
+  };
+
+  /* Columns are benchmarks when the family has no language axis (LibriSpeech). */
+  W.axisFor = function (rows) {
+    const languages = [...new Set(rows.map(W.languageOf).filter(Boolean))].sort();
+    const benchmarks = [...new Set(rows.map((row) => row.benchmark))].sort();
+    if (benchmarks.length > 1 && languages.length <= 1) {
+      return { mode: "benchmark", values: benchmarks };
+    }
+    return { mode: "language", values: languages };
+  };
+
+  W.columnOf = function (row, mode) {
+    return mode === "benchmark" ? row.benchmark : W.languageOf(row);
+  };
+
+  /* The campaign / model-group / language filter every renderer applies. */
+  W.visibleSlices = function (snapshot, state) {
+    return snapshot.slices.filter(
+      (slice) =>
+        (!state.campaign || slice.campaign === state.campaign) &&
+        (!state.modelFamily || snapshot.model_families[slice.model] === state.modelFamily) &&
+        (!state.language ||
+          slice.lang === state.language ||
+          slice.src === state.language ||
+          slice.tgt === state.language)
+    );
+  };
+
   W.escape = function (text) {
     return String(text === null || text === undefined ? "" : text).replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
   };
