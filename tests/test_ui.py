@@ -581,3 +581,38 @@ def test_column_helpers_are_shared(live_server):
                }"""
         ) == ["de", "de"]
         browser.close()
+
+
+def test_common_columns_intersects_participating_models(live_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(live_server)
+        page.wait_for_function("() => !!(window.Worklog && window.Worklog.commonColumns)")
+        result = page.evaluate(
+            """() => {
+                 const W = window.Worklog;
+                 const slice = (model, lang, wer) => ({
+                   model, task: 'asr', family: 'VoxPopuli', benchmark: 'voxpopuli-dev',
+                   lang, src: null, tgt: null, samples: 10,
+                   metrics: wer === null ? {} : {corpus_wer_raw: wer},
+                 });
+                 const snapshot = {
+                   slices: [
+                     slice('a', 'en', 0.1), slice('a', 'de', 0.2), slice('a', 'fr', 0.3),
+                     slice('b', 'en', 0.1), slice('b', 'de', 0.2),
+                     {model: 'c', task: 'asr', family: 'LibriSpeech', benchmark: 'librispeech-validation-clean',
+                      lang: 'en', src: null, tgt: null, samples: 10, metrics: {corpus_wer_raw: 0.05}},
+                   ],
+                   filters: {models: ['a', 'b', 'c'], families: ['LibriSpeech', 'VoxPopuli']},
+                   model_families: {a: 'baseline', b: 'baseline', c: 'baseline'},
+                   checkpoints: {},
+                 };
+                 const common = W.commonColumns(snapshot, {aggregate: 'macro'}, 'asr', 'corpus_wer_raw');
+                 const entry = common.get('VoxPopuli');
+                 return {mode: entry.mode, columns: [...entry.columns].sort(),
+                         kept: snapshot.slices.filter((row) => W.keepsRow(common, row)).length};
+               }"""
+        )
+        assert result == {"mode": "language", "columns": ["de", "en"], "kept": 5}
+        browser.close()

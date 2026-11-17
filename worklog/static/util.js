@@ -167,6 +167,43 @@ window.Worklog = window.Worklog || {};
     );
   };
 
+  /* The columns every visible model of a task has a result on, per family.
+     A model that never ran a family does not veto it; a model that ran it and
+     has no finite value for `metric` there does. */
+  W.commonColumns = function (snapshot, state, task, metric) {
+    const rows = W.visibleSlices(snapshot, state).filter((row) => row.task === task);
+    const models = snapshot.filters.models.filter((model) =>
+      W.modelVisible(snapshot, state, model, task)
+    );
+    const byFamily = new Map();
+    for (const row of rows) {
+      if (!byFamily.has(row.family)) byFamily.set(row.family, []);
+      byFamily.get(row.family).push(row);
+    }
+    const common = new Map();
+    for (const [family, familyRows] of byFamily) {
+      const axis = W.axisFor(familyRows);
+      let kept = null;
+      for (const model of models) {
+        const mine = familyRows.filter((row) => row.model === model);
+        if (!mine.length) continue;
+        const columns = new Set();
+        for (const row of mine) {
+          if (Number.isFinite(row.metrics[metric])) columns.add(W.columnOf(row, axis.mode));
+        }
+        kept = kept === null ? columns : new Set([...kept].filter((value) => columns.has(value)));
+      }
+      common.set(family, { mode: axis.mode, columns: kept || new Set() });
+    }
+    return common;
+  };
+
+  /* Whether a row's column survived the intersection. */
+  W.keepsRow = function (common, row) {
+    const entry = common.get(row.family);
+    return !!entry && entry.columns.has(W.columnOf(row, entry.mode));
+  };
+
   W.escape = function (text) {
     return String(text === null || text === undefined ? "" : text).replace(/[&<>"']/g, (ch) => ENTITIES[ch]);
   };
