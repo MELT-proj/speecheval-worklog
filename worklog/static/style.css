@@ -208,6 +208,12 @@ input[type="search"] { min-width: 210px; }
   font-size: 12px;
   border-radius: 8px;
 }
+.matrix-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.matrix-controls .check { margin-left: 0; }
 .check {
   display: inline-flex;
   align-items: center;

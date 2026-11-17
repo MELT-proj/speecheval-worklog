@@ -61,6 +61,9 @@ window.Worklog = window.Worklog || {};
     const models = snapshot.filters.models.filter((model) =>
       W.modelVisible(snapshot, state, model, task)
     );
+    const commonOn = !!(state.common && state.common[task]);
+    const common = commonOn ? W.commonColumns(snapshot, state, task, metric) : null;
+    const cellSlices = commonOn ? slices.filter((slice) => W.keepsRow(common, slice)) : slices;
 
     const wrapper = document.createElement("section");
     wrapper.className = "matrix-block";
@@ -82,8 +85,39 @@ window.Worklog = window.Worklog || {};
       select.appendChild(option);
     }
     select.addEventListener("change", (event) => W.app.setMetric(task, event.target.value));
-    head.appendChild(select);
+
+    const controls = document.createElement("div");
+    controls.className = "matrix-controls";
+    controls.appendChild(select);
+    const toggle = document.createElement("label");
+    toggle.className = "check";
+    toggle.title =
+      "Restrict this table to the languages every visible model has a result on " +
+      "(LibriSpeech uses its two benchmark variants as columns)";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.id = `common-${task}`;
+    box.checked = !!(state.common && state.common[task]);
+    box.addEventListener("change", (event) => W.app.setCommon(task, event.target.checked));
+    toggle.appendChild(box);
+    toggle.appendChild(document.createTextNode(" common languages only"));
+    controls.appendChild(toggle);
+    head.appendChild(controls);
     wrapper.appendChild(head);
+
+    if (commonOn) {
+      const anyColumn = families.some((name) => {
+        const entry = common.get(name);
+        return !!entry && entry.columns.size > 0;
+      });
+      if (!anyColumn) {
+        const empty = document.createElement("div");
+        empty.className = "placeholder";
+        empty.textContent = "No column has a result for every visible model at this metric.";
+        wrapper.appendChild(empty);
+        return wrapper;
+      }
+    }
 
     const table = document.createElement("table");
     table.className = "matrix-table";
@@ -117,7 +151,7 @@ window.Worklog = window.Worklog || {};
         row.appendChild(nameCell);
 
         for (const family of families) {
-          const cellRows = slices.filter((slice) => slice.model === model && slice.family === family);
+          const cellRows = cellSlices.filter((slice) => slice.model === model && slice.family === family);
           const cell = cellFor(cellRows, metric, state);
           grid[family].push({ model, value: cell.value, el: null });
           const td = document.createElement("td");

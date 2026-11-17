@@ -22,8 +22,10 @@ window.Worklog = window.Worklog || {};
     for (const [key] of FILTERS) state[key] = params.get(key) || "";
     state.heatmap = params.get("heatmap") || "";
     state.metric = {};
+    state.common = {};
     for (const [key, value] of params.entries()) {
       if (key.startsWith("metric-") && value) state.metric[key.slice("metric-".length)] = value;
+      if (key.startsWith("common-") && value === "1") state.common[key.slice("common-".length)] = true;
     }
     state.showAllCheckpoints = params.get("showAll") === "1";
   }
@@ -33,6 +35,9 @@ window.Worklog = window.Worklog || {};
     for (const [key] of FILTERS) if (state[key]) params.set(key, state[key]);
     for (const [task, name] of Object.entries(state.metric || {})) {
       if (name) params.set(`metric-${task}`, name);
+    }
+    for (const [task, on] of Object.entries(state.common || {})) {
+      if (on) params.set(`common-${task}`, "1");
     }
     if (state.showAllCheckpoints) params.set("showAll", "1");
     if (state.heatmap) params.set("heatmap", state.heatmap);
@@ -85,6 +90,7 @@ window.Worklog = window.Worklog || {};
     reset.addEventListener("click", () => {
       for (const [key] of FILTERS) state[key] = "";
       state.metric = {};
+      state.common = {};
       state.showAllCheckpoints = false;
       state.heatmap = "";
       writeHash();
@@ -193,6 +199,12 @@ window.Worklog = window.Worklog || {};
   W.app = {
     setMetric(task, name) {
       state.metric[task] = name;
+      writeHash();
+      renderAll();
+    },
+    setCommon(task, on) {
+      if (!state.common) state.common = {};
+      state.common[task] = !!on;
       writeHash();
       renderAll();
     },

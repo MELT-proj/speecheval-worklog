@@ -616,3 +616,137 @@ def test_common_columns_intersects_participating_models(live_server):
         )
         assert result == {"mode": "language", "columns": ["de", "en"], "kept": 5}
         browser.close()
+
+
+@pytest.fixture
+def coverage_server(tmp_path):
+    asr = (("en", 0.10, "10:00"), ("de", 0.30, "10:10"), ("fr", 0.30, "10:20"))
+    for lang, wer, at in asr:
+        make_log(
+            tmp_path,
+            campaign="speechval-coverage",
+            benchmark="voxpopuli-dev",
+            slice_id=f"asr-{lang}",
+            task="asr",
+            dataset_id=f"voxpopuli-{lang}-dev",
+            src=None,
+            tgt=None,
+            lang=lang,
+            metrics={"corpus_wer_raw": wer},
+            created=f"2026-11-12T{at}:00+00:00",
+        )
+    for lang, bleu, at in (("de", 20.0, "11:00"), ("fr", 30.0, "11:10")):
+        make_log(
+            tmp_path,
+            campaign="speechval-coverage",
+            benchmark="fleurs24-st-xen-dev",
+            slice_id=f"st-fleurs-{lang}_en",
+            dataset_id=f"fleurs-{lang}_en",
+            src=lang,
+            tgt="en",
+            metrics={"corpus_bleu": bleu},
+            created=f"2026-11-12T{at}:00+00:00",
+        )
+    for lang, wer, at in (("en", 0.05, "12:00"), ("de", 0.15, "12:10")):
+        make_log(
+            tmp_path,
+            campaign="speechval-coverage",
+            model="cohere-transcribe-03-2026",
+            eval_model="melt/hf/cohere_transcribe",
+            benchmark="voxpopuli-dev",
+            slice_id=f"asr-{lang}",
+            task="asr",
+            dataset_id=f"voxpopuli-{lang}-dev",
+            src=None,
+            tgt=None,
+            lang=lang,
+            metrics={"corpus_wer_raw": wer},
+            created=f"2026-11-12T{at}:00+00:00",
+        )
+    make_log(
+        tmp_path,
+        campaign="speechval-coverage",
+        model="empty-baseline",
+        eval_model="melt/hf/empty",
+        benchmark="fleurs24-st-xen-dev",
+        slice_id="st-fleurs-it_en",
+        dataset_id="fleurs-it_en",
+        src="it",
+        tgt="en",
+        metrics={},
+        created="2026-11-12T13:00:00+00:00",
+    )
+    cfg = load_config(
+        overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")}
+    )
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+def test_common_languages_shrinks_matrix_cells(coverage_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(coverage_server)
+        page.wait_for_function("window.Worklog && window.Worklog.matrix")
+        snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+        page.evaluate(
+            "([snap, state]) => window.Worklog.matrix.render(snap, state)",
+            [snapshot, {"aggregate": "macro"}],
+        )
+        asr = page.locator(".matrix-block").nth(0)
+        st_before = page.locator(".matrix-block").nth(1).inner_text()
+        assert "23.33" in asr.inner_text()  # mean of 0.10, 0.30, 0.30
+        assert "3/3" in asr.inner_text()
+        page.evaluate(
+            "([snap, state]) => window.Worklog.matrix.render(snap, state)",
+            [snapshot, {"aggregate": "macro", "common": {"asr": True}}],
+        )
+        asr = page.locator(".matrix-block").nth(0)
+        assert "20.00" in asr.inner_text()  # en + de only
+        assert "2/2" in asr.inner_text()
+        assert "23.33" not in asr.inner_text()
+        assert page.locator(".matrix-block").nth(1).inner_text() == st_before
+        browser.close()
+
+
+def test_common_languages_toggle_persists_and_resets(coverage_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(coverage_server)
+        page.wait_for_selector("#common-asr")
+        page.check("#common-asr")
+        page.wait_for_function(
+            "() => document.getElementById('matrix').innerText.includes('20.00')"
+        )
+        assert "common-asr=1" in page.url
+        page.reload()
+        page.wait_for_selector("#common-asr")
+        assert page.is_checked("#common-asr")
+        page.click("#filters >> text=Reset")
+        page.wait_for_function("() => !location.hash.includes('common-asr')")
+        assert not page.is_checked("#common-asr")
+        assert "23.33" in page.locator(".matrix-block").nth(0).inner_text()
+        browser.close()
+
+
+def test_common_languages_empty_state_keeps_the_control(coverage_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(coverage_server)
+        page.wait_for_function("window.Worklog && window.Worklog.matrix")
+        snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+        page.evaluate(
+            "([snap, state]) => window.Worklog.matrix.render(snap, state)",
+            [snapshot, {"aggregate": "macro", "common": {"st": True}}],
+        )
+        st = page.locator(".matrix-block").nth(1)
+        assert "every visible model" in st.inner_text()
+        assert page.locator("#common-st").is_checked()
+        browser.close()
