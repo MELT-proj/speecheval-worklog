@@ -542,8 +542,10 @@ git commit -m "feat: report the common-languages shrink in the drill-down"
 
 ## Manual check
 
-With the server running (`python app.py --port 8765`), open the page on
-`speechval-cohere` and tick ASR: the VoxPopuli cell's count should fall from
-`7/14` to `7/7`, the heatmap should lose `ro hu cs fi hr sk sl`, and the
-drill-down should read `7 of 14 languages · common only`. Unticking restores
-the old numbers.
+With the server running (`python app.py --port 8765`), show all campaigns and
+tick ASR: every VoxPopuli cell whose model ran more columns than the least
+covered visible model ran should lose the missing ones (`n/total` falls to the
+common count), the heatmap should lose exactly those language columns, and the
+drill-down should read `<kept> of <ran> languages · common only`. Unticking
+restores the old numbers. Note the count is per model, so a model that only ran
+the common set reads the same either way; the comparison is what changes.
