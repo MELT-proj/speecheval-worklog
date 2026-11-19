@@ -102,3 +102,22 @@ def test_models_are_ordered_by_numeric_step_ascending(cfg):
         "smurf-b-step-3",
         "smurf-b-step-20",
     ]
+
+
+def test_polyspeech_audio_mcq_is_a_classified_family(cfg):
+    runs = [
+        run(
+            benchmark="polyspeech-100-pa_qt-200",
+            slice="audio_mcq-polyspeech-pa_qt-de",
+            task="audio_mcq",
+            src=None,
+            tgt=None,
+            lang="de",
+            metrics={"choice_accuracy": 0.465, "unresolved_rate": 0.0},
+        )
+    ]
+    snap = build_snapshot(cfg, runs, [], "v1", "now")
+    assert snap["slices"][0]["family"] == "PolySpeech"
+    assert snap["matrix"]["audio_mcq"]["metric"] == "choice_accuracy"
+    cell = next(c for c in snap["matrix"]["audio_mcq"]["cells"] if c["family"] == "PolySpeech")
+    assert cell["value"] == 0.465

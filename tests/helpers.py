@@ -200,3 +200,81 @@ def run(
         pending=pending,
         row_id=row_id,
     )
+
+
+def make_mcq_log(
+    base,
+    *,
+    model="eurollm-speech-16n-step-0600000",
+    eval_model="smurf//checkpoints/step=600000.ckpt",
+    benchmark="polyspeech-100-pa_qt-200",
+    slice_id="audio_mcq-polyspeech-pa_qt-de",
+    task="audio_mcq",
+    lang="de",
+    campaign="speechval-polyspeech",
+    accuracy=0.465,
+    unresolved=0.0,
+    correct=1,
+    resolved=1,
+    samples=3,
+    created="2026-11-19T01:00:00+00:00",
+):
+    """Write a minimal inspect log for the PolySpeech multiple-choice task."""
+    body = {
+        "version": 2,
+        "status": "success",
+        "eval": {
+            "eval_id": slice_id,
+            "created": created,
+            "task": f"speech-{task}-{slice_id}",
+            "task_args": {"dataset_id": f"polyspeech-pa_qt-{lang}", "lang": None},
+            "dataset": {"name": benchmark, "location": "/frozen", "samples": samples},
+            "model": eval_model,
+            "metadata": {
+                "melteval_model": model,
+                "melteval_benchmark": benchmark,
+                "melteval_slice": slice_id,
+                "melteval_task": task,
+                "melteval_campaign": campaign,
+            },
+        },
+        "results": {
+            "total_samples": samples,
+            "completed_samples": samples,
+            "scores": [{
+                "name": "mcq_scorer",
+                "metrics": {
+                    "choice_accuracy": {"name": "choice_accuracy", "value": accuracy},
+                    "unresolved_rate": {"name": "unresolved_rate", "value": unresolved},
+                },
+            }],
+        },
+        "stats": {"started_at": created, "completed_at": created},
+        "samples": [
+            {
+                "id": f"09-{i:06d}",
+                "epoch": 1,
+                "input": "{audio_token}\nQuestion?",
+                "target": "Correct option",
+                "messages": [],
+                "output": {"completion": "B. Correct option", "stop_reason": "stop"},
+                "scores": {"mcq_scorer": {
+                    "value": {"correct": correct, "resolved": resolved},
+                    "answer": "B. Correct option",
+                    "metadata": {"chosen": "Correct option", "reference": "Correct option"},
+                    "history": [],
+                }},
+                "metadata": {"task": task, "lang": lang, "src_lang": "", "tgt_lang": ""},
+                "total_time": 1.0,
+                "working_time": 1.0,
+                "turn_count": 1,
+                "error_retries": [],
+            }
+            for i in range(samples)
+        ],
+    }
+    folder = Path(base) / "logs" / model / benchmark / slice_id
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{created.replace(':', '-')}.json"
+    path.write_text(json.dumps(body))
+    return path.resolve()

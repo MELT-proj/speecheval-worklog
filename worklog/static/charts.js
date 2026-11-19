@@ -161,7 +161,11 @@ window.Worklog = window.Worklog || {};
     const text = css.getPropertyValue("--text").trim() || "#e6edf3";
     const pageBg = css.getPropertyValue("--bg").trim() || "#0f1216";
     chart = echarts.init(el, null, { renderer: "canvas" });
-    const percent = metric.includes("wer") || metric.includes("cer");
+    const percent =
+      metric.includes("wer") ||
+      metric.includes("cer") ||
+      metric.includes("accuracy") ||
+      metric.includes("unresolved");
     const colors = rule.lower
       ? ["#1f7a5a", "#3ddc97", "#f4b942", "#ff6b6b"]
       : ["#1d3557", "#2a6f97", "#4cc9f0", "#3ddc97"];

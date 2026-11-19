@@ -22,7 +22,7 @@ from worklog.config import load_config
 from worklog.scanner import iter_log_paths, scan_run
 from worklog.store import Store
 
-from .helpers import make_log, make_sample_log
+from .helpers import make_log, make_mcq_log, make_sample_log
 
 
 def _scan(path):
@@ -863,4 +863,45 @@ def test_common_languages_drilldown_keeps_the_plain_header_when_unticked(coverag
         assert "3 slice(s)" in body
         assert "common only" not in body
         assert page.locator("#modal-body tbody tr").count() == 3
+        browser.close()
+
+
+@pytest.fixture
+def mcqa_server(tmp_path):
+    make_mcq_log(
+        tmp_path,
+        model="eurollm-speech-16n-step-0600000",
+        eval_model="smurf//checkpoints/step=600000.ckpt",
+        lang="de",
+        correct=1,
+        resolved=1,
+    )
+    cfg = load_config(
+        overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")}
+    )
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+def test_audio_mcq_table_renders_accuracy_as_a_percentage(mcqa_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(mcqa_server)
+        page.wait_for_function("window.Worklog && window.Worklog.matrix")
+        snapshot = page.evaluate("() => fetch('/api/snapshot').then((r) => r.json())")
+        page.evaluate(
+            "([snap, state]) => window.Worklog.matrix.render(snap, state)",
+            [snapshot, {"aggregate": "macro", "showAllCheckpoints": True}],
+        )
+        text = page.inner_text("#matrix")
+        assert "MULTIPLE-CHOICE QA" in text.upper()
+        assert "46.50" in text
+        assert "UNCLASSIFIED" not in text.upper()
+        assert snapshot["slices"][0]["family"] == "PolySpeech"
+        assert snapshot["slices"][0]["lang"] == "de"
         browser.close()

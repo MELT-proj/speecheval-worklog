@@ -11,7 +11,7 @@ window.Worklog = window.Worklog || {};
     ["language", "Language"],
   ];
   const GROUP_ORDER = ["baseline", "melt", "smurf", "other"];
-  const TASK_LABELS = { asr: "ASR", st: "ST" };
+  const TASK_LABELS = { asr: "ASR", st: "ST", audio_mcq: "QA" };
 
   let snapshot = null;
   let lastRefresh = null;

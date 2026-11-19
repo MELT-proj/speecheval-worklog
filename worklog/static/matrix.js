@@ -6,10 +6,16 @@ window.Worklog = window.Worklog || {};
   const TASKS = [
     ["asr", "Speech recognition"],
     ["st", "Speech translation"],
+    ["audio_mcq", "Multiple-choice QA"],
   ];
 
   function isPercent(metric) {
-    return metric.includes("wer") || metric.includes("cer");
+    return (
+      metric.includes("wer") ||
+      metric.includes("cer") ||
+      metric.includes("accuracy") ||
+      metric.includes("unresolved")
+    );
   }
 
   function format(metric, value) {

@@ -22,6 +22,7 @@ families:
   - {name: CoVoST2 ENtoX, task: st, direction: enx, benchmarks: [covost2-enx-dev]}
   - {name: Europarl XtoEN, task: st, direction: xen, benchmarks: [europarl-st-dev]}
   - {name: Europarl ENtoX, task: st, direction: enx, benchmarks: [europarl-st-dev]}
+  - {name: PolySpeech, task: audio_mcq, benchmarks: [polyspeech-100-pa_qt-200]}
 
 metrics:
   corpus_wer_raw: {label: WER, lower: true}
@@ -32,7 +33,10 @@ metrics:
   corpus_spbleu: {label: spBLEU, lower: false}
   metricx: {label: MetricX, lower: true}
   comet: {label: COMET, lower: false}
+  choice_accuracy: {label: Accuracy, lower: false}
+  unresolved_rate: {label: Unresolved, lower: true}
 
 headline:
   asr: corpus_wer_raw
   st: corpus_bleu
+  audio_mcq: choice_accuracy
