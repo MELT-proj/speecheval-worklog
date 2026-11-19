@@ -89,6 +89,10 @@ Each table has its own **metric selector** (BLEU, chrF, spBLEU, MetricX, …),
 and slices whose benchmark is not in `worklog.yaml` are listed under
 **Unclassified** with their log path instead of vanishing.
 
+The same tables cover `audio_mcq` benchmarks (for example PolySpeech): accuracy
+and unresolved rates render as percentages, and the drill-down and heatmap use
+one column per language.
+
 The matrix cell is the **macro average of the per-slice values** for that
 model and family (or sample-weighted with `aggregate: weighted`), labelled with
 `scored/present`. The drill-down shows the per-slice corpus figures, which are
