@@ -25,6 +25,15 @@ def checkpoint_of(model: str) -> tuple[str, int | None]:
     return match.group("base"), int(match.group("step"))
 
 
+_GROUP_RANK = {"baseline": 0, "melt": 1, "smurf": 2, "other": 3}
+
+
+def _model_sort_key(model: str, group: str) -> tuple:
+    """Group, base checkpoint, numeric step, then name; steps ascend."""
+    base, step = checkpoint_of(model)
+    return (_GROUP_RANK.get(group, 3), base, -1 if step is None else step, model)
+
+
 def checkpoint_flags(models: Sequence[str], groups: dict[str, str]) -> dict[str, dict]:
     """Per-model base, step and whether it is the highest step of its group.
 
@@ -143,9 +152,9 @@ def build_snapshot(
 ) -> dict:
     """The whole view payload: slices, server-side matrix, filters, KPIs and feed."""
     slices = [_slice_row(config, run) for run in runs]
-    models = sorted({run.model for run in runs})
     providers = {run.model: (run.provider or run.model) for run in runs}
     model_groups = {model: model_family(provider) for model, provider in providers.items()}
+    models = sorted(providers, key=lambda model: _model_sort_key(model, model_groups[model]))
     slices_by_family: dict[str, list[ScannedRun]] = {}
     for run in runs:
         family = family_of(config, run)

@@ -84,3 +84,21 @@ def test_latest_is_computed_within_a_model_family(cfg):
     snap = build_snapshot(cfg, runs, [], "v1", "now")
     assert snap["checkpoints"]["seed-step-5"]["latest"] is True
     assert snap["checkpoints"]["seed-step-9"]["latest"] is True
+
+
+def test_models_are_ordered_by_numeric_step_ascending(cfg):
+    runs = [
+        run(model="smurf-b-step-20", provider="smurf/x"),
+        run(model="smurf-b-step-3", provider="smurf/x"),
+        run(model="fondue-step-26000", provider="melt/fondue-step-26000"),
+        run(model="fondue-step-3000", provider="melt/fondue-step-3000"),
+        run(model="canary-1b-v2", provider="melt/hf/canary"),
+    ]
+    snap = build_snapshot(cfg, runs, [], "v1", "now")
+    assert snap["filters"]["models"] == [
+        "canary-1b-v2",
+        "fondue-step-3000",
+        "fondue-step-26000",
+        "smurf-b-step-3",
+        "smurf-b-step-20",
+    ]
