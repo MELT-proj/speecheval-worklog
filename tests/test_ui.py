@@ -986,3 +986,26 @@ def test_audio_mcq_heatmap_uses_language_columns_and_percentages(mcqa_heatmap_se
         )
         assert option == {"axis": ["de", "fr"], "percent": "47"}
         browser.close()
+
+
+def test_matrix_blocks_are_visually_separated_and_headers_are_bold(live_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(live_server)
+        page.wait_for_selector(".matrix-block")
+        styles = page.evaluate(
+            """() => {
+                 const blocks = [...document.querySelectorAll('.matrix-block')];
+                 const title = blocks[0].querySelector('.matrix-title');
+                 return {
+                   firstMargin: getComputedStyle(blocks[0]).marginTop,
+                   secondMargin: getComputedStyle(blocks[1]).marginTop,
+                   weight: getComputedStyle(title).fontWeight,
+                 };
+               }"""
+        )
+        assert styles["firstMargin"] == "0px"
+        assert styles["secondMargin"] != "0px"
+        assert int(styles["weight"]) >= 700
+        browser.close()

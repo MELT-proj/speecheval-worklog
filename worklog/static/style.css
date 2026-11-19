@@ -186,21 +186,37 @@ input[type="search"] { min-width: 210px; }
 /* ---- matrix ------------------------------------------------------------- */
 
 .matrix { overflow: auto; max-height: 68vh; }
-.matrix-block + .matrix-block { border-top: 1px solid var(--line); }
+.matrix-block + .matrix-block {
+  margin-top: 30px;
+  border-top: 1px solid var(--line);
+}
 .matrix-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px 8px;
+  padding: 18px 18px 10px;
+  background: linear-gradient(180deg, var(--bg-elev), transparent 88%);
+  border-bottom: 1px solid var(--line-soft);
 }
 .matrix-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: .06em;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: .04em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text);
+}
+.matrix-title::before {
+  content: "";
+  width: 4px;
+  height: 1.15em;
+  border-radius: 2px;
+  background: var(--accent);
+  flex: none;
 }
 .metric-select {
   min-width: 150px;
