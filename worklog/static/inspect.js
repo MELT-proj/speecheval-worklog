@@ -197,11 +197,27 @@ window.Worklog = window.Worklog || {};
       .join("");
   }
 
+  function outcomeOf(sample) {
+    for (const entry of Object.values(sample.scores || {})) {
+      const value = entry && entry.value;
+      if (!value || typeof value !== "object" || !("correct" in value)) continue;
+      if (value.resolved === 0) return { text: "unresolved", cls: "unresolved" };
+      return value.correct
+        ? { text: "\u2713 correct", cls: "correct" }
+        : { text: "\u2717 incorrect", cls: "incorrect" };
+    }
+    return null;
+  }
+
   function renderSample(sample) {
     const timing = sample.timing || {};
     const normalized = firstAnswer(sample.scores);
     const epoch = sample.epoch || 0;
     const clampId = (suffix) => `s-${suffix}-${W.escape(sample.id)}-${epoch}`;
+    const outcome = outcomeOf(sample);
+    const headMetric = outcome
+      ? `<span class="sample-outcome ${outcome.cls}">${W.escape(outcome.text)}</span>`
+      : `<span class="sample-wer">${W.escape(fmtPercent(sample.wer))}</span>`;
 
     const rows = [
       clampedRow("Reference", sample.target, clampId("ref")),
@@ -218,7 +234,7 @@ window.Worklog = window.Worklog || {};
     return `<article class="sample" data-id="${W.escape(sample.id)}" data-epoch="${epoch}">
       <div class="sample-head">
         <span class="sample-id">${W.escape(sample.id)} <span class="sample-epoch">epoch ${epoch}</span></span>
-        <span class="sample-wer">${W.escape(fmtPercent(sample.wer))}</span>
+        ${headMetric}
         <span class="sample-time">${W.escape(fmtDuration(timing.total_time))}</span>
         ${flagChips(sample.flags)}
       </div>

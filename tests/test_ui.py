@@ -905,3 +905,49 @@ def test_audio_mcq_table_renders_accuracy_as_a_percentage(mcqa_server):
         assert snapshot["slices"][0]["family"] == "PolySpeech"
         assert snapshot["slices"][0]["lang"] == "de"
         browser.close()
+
+
+@pytest.fixture
+def mcq_inspector_server(tmp_path):
+    path = make_mcq_log(tmp_path, samples=1, correct=0, resolved=1)
+    store = Store(tmp_path / "w.sqlite")
+    store.sync([_scan(path)])
+    cfg = dataclasses.replace(load_config(), cache=tmp_path / "w.sqlite")
+    app = create_app(cfg, store)
+    server = make_server("127.0.0.1", 0, app)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}", store.all()[0].row_id
+    server.shutdown()
+
+
+def test_inspector_shows_mcq_outcome_instead_of_wer(mcq_inspector_server):
+    base, rid = mcq_inspector_server
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1400, "height": 1000})
+        page.goto(f"{base}/inspect?run={rid}")
+        page.wait_for_selector("#samples .sample")
+        outcome = page.inner_text("#samples .sample-outcome")
+        assert "incorrect" in outcome.lower()
+        assert page.locator("#samples .sample-wer").count() == 0
+        browser.close()
+
+
+def test_inspector_calls_an_unresolved_mcq_sample_unresolved(tmp_path):
+    path = make_mcq_log(tmp_path, samples=1, correct=0, resolved=0)
+    store = Store(tmp_path / "w.sqlite")
+    store.sync([_scan(path)])
+    cfg = dataclasses.replace(load_config(), cache=tmp_path / "w.sqlite")
+    app = create_app(cfg, store)
+    server = make_server("127.0.0.1", 0, app)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": 1400, "height": 1000})
+            page.goto(f"http://127.0.0.1:{server.server_port}/inspect?run={store.all()[0].row_id}")
+            page.wait_for_selector("#samples .sample")
+            assert "unresolved" in page.inner_text("#samples .sample-outcome").lower()
+            browser.close()
+    finally:
+        server.shutdown()

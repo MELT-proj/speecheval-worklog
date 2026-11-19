@@ -398,6 +398,10 @@ table.matrix-table { border-collapse: separate; border-spacing: 0; width: 100%; 
 
 .sample-id { font-family: var(--mono); font-size: 13px; font-weight: 600; }
 .sample-wer { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sample-outcome { margin-left: auto; font-weight: 700; }
+.sample-outcome.correct { color: var(--good); }
+.sample-outcome.incorrect { color: var(--bad); }
+.sample-outcome.unresolved { color: var(--warn); }
 .sample-time { color: var(--faint); font-size: 12px; }
 
 .sample-row {
