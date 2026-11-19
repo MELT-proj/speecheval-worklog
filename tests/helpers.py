@@ -208,7 +208,7 @@ def make_mcq_log(
     model="eurollm-speech-16n-step-0600000",
     eval_model="smurf//checkpoints/step=600000.ckpt",
     benchmark="polyspeech-100-pa_qt-200",
-    slice_id="audio_mcq-polyspeech-pa_qt-de",
+    slice_id=None,
     task="audio_mcq",
     lang="de",
     campaign="speechval-polyspeech",
@@ -220,6 +220,7 @@ def make_mcq_log(
     created="2026-11-19T01:00:00+00:00",
 ):
     """Write a minimal inspect log for the PolySpeech multiple-choice task."""
+    slice_id = slice_id or f"audio_mcq-polyspeech-pa_qt-{lang}"
     body = {
         "version": 2,
         "status": "success",

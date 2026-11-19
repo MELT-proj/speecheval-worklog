@@ -951,3 +951,38 @@ def test_inspector_calls_an_unresolved_mcq_sample_unresolved(tmp_path):
             browser.close()
     finally:
         server.shutdown()
+
+
+@pytest.fixture
+def mcqa_heatmap_server(tmp_path):
+    for lang, accuracy in (("de", 0.4), ("fr", 0.5)):
+        make_mcq_log(tmp_path, lang=lang, accuracy=accuracy)
+    cfg = load_config(
+        overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")}
+    )
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+def test_audio_mcq_heatmap_uses_language_columns_and_percentages(mcqa_heatmap_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(mcqa_heatmap_server)
+        page.wait_for_selector("#heatmap canvas")
+        option = page.evaluate(
+            """() => {
+                 const chart = echarts.getInstanceByDom(document.getElementById('heatmap'));
+                 const option = chart.getOption();
+                 return {
+                   axis: option.xAxis[0].data,
+                   percent: option.visualMap[0].formatter(0.465),
+                 };
+               }"""
+        )
+        assert option == {"axis": ["de", "fr"], "percent": "47"}
+        browser.close()
