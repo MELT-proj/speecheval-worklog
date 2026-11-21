@@ -22,6 +22,11 @@ families:
   - {name: CoVoST2 ENtoX, task: st, direction: enx, benchmarks: [covost2-enx-dev]}
   - {name: Europarl XtoEN, task: st, direction: xen, benchmarks: [europarl-st-dev]}
   - {name: Europarl ENtoX, task: st, direction: enx, benchmarks: [europarl-st-dev]}
+  # Pairs with no English side (de->es, fr->it, ...), which match neither family
+  # above: a slice takes the first family that matches, and this one has no
+  # direction, so it catches only the leftovers. Qwen3-Omni is the only row
+  # that runs them; the en-only baselines skip them.
+  - {name: Europarl other pairs, task: st, benchmarks: [europarl-st-dev]}
   - {name: PolySpeech, task: audio_mcq, benchmarks: [polyspeech-100-pa_qt-200]}
 
 metrics:
