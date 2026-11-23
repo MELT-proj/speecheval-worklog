@@ -142,15 +142,17 @@ count, and the validation page's numbers are bit-for-bit what they are today
 
 ### Routes and page
 
-- `/test` serves the same `index.html` with a `data-split="test"` flag;
-  `/` keeps serving validation.
+- `/test` serves the same static `index.html` as `/`; the page detects its
+  split from the URL path (`/test` vs `/`) in JS — no server-injected flag,
+  no template change. `/` keeps serving validation.
 - `/api/snapshot` gains `?split=test` (default `validation`, so nothing
-  existing changes behaviour).
-- Nav gains **🚀 Test** between Results and Trends, with `aria-current` set
-  on it for the test page.
-- `app.js` reads the split from the flag, passes it to every poll/refresh
-  call, and shows a "Test splits" badge in the page header so a screenshot is
-  self-identifying.
+  existing changes behaviour; an unknown value is a 400, not a silent
+  fallback).
+- Nav gains **🚀 Test** between Results and Trends; `aria-current` is set
+  by JS from the path (the page is fully JS-rendered already).
+- `app.js` computes the split from `location.pathname`, passes it to every
+  poll/refresh call, and shows a "Test splits" badge in the page header so
+  a screenshot is self-identifying.
 
 ### Trends
 
