@@ -1,3 +1,5 @@
+import pytest
+
 from worklog.config import load_config
 
 
@@ -45,3 +47,25 @@ def test_missing_explicit_config_raises(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         load_config(tmp_path / "nope.yaml")
+
+
+def test_trends_lineages_parse_ids_names_and_pattern_lists(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "trends:\n"
+        "  lineages:\n"
+        "    - {id: smurf/16n, name: SMURF 16n, match: '^eurollm'}\n"
+        "    - {name: SMURF batch, match: ['^step-', '^batch-']}\n"
+    )
+    cfg = load_config(path)
+    assert [lineage.id for lineage in cfg.lineages] == ["smurf/16n", "smurf-batch"]
+    assert cfg.lineage_for("eurollm-speech-16n-step-0108000").id == "smurf/16n"
+    assert cfg.lineage_for("batch-3000").id == "smurf-batch"
+    assert cfg.lineage_for("canary-1b-v2") is None
+
+
+def test_trends_lineage_regex_must_compile(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text("trends:\n  lineages:\n    - {name: Broken, match: '[unclosed'}\n")
+    with pytest.raises(ValueError, match="Broken"):
+        load_config(path)

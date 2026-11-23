@@ -8,6 +8,7 @@ headline for each task. Nothing here knows about inspect_ai or melteval.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -41,6 +42,19 @@ class Metric:
 
 
 @dataclass(frozen=True)
+class Lineage:
+    """One training line in the trends page: several model prefixes, one label."""
+
+    id: str
+    name: str
+    patterns: tuple[str, ...]
+
+    def matches(self, model: str) -> bool:
+        """Whether *model* belongs to this configured lineage."""
+        return any(re.search(pattern, model) for pattern in self.patterns)
+
+
+@dataclass(frozen=True)
 class Config:
     """Everything the scanner, the views and the API read."""
 
@@ -55,6 +69,14 @@ class Config:
     families: tuple[Family, ...] = ()
     metrics: dict[str, Metric] = field(default_factory=dict)
     headline: dict[str, str] = field(default_factory=dict)
+    lineages: tuple[Lineage, ...] = ()
+
+    def lineage_for(self, model: str) -> Lineage | None:
+        """The first configured lineage whose patterns match *model*."""
+        for lineage in self.lineages:
+            if lineage.matches(model):
+                return lineage
+        return None
 
     def _task_key(self, task: str) -> str:
         """``chunked_asr`` and ``asr`` share a headline; the suite uses both prefixes."""
@@ -72,6 +94,11 @@ class Config:
 
 def _expand(value: str | Path) -> Path:
     return Path(os.path.expanduser(os.path.expandvars(str(value))))
+
+
+def _slug(name: str) -> str:
+    """A stable id from a display label: ``SMURF · 16n`` -> ``smurf-16n``."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
 def load_config(path: Path | None = None, overrides: dict[str, object] | None = None) -> Config:
@@ -126,6 +153,20 @@ def load_config(path: Path | None = None, overrides: dict[str, object] | None = 
         if metric not in metrics:
             raise ValueError(f"headline {task!r} names undefined metric {metric!r}")
 
+    lineages: list[Lineage] = []
+    for item in (raw.get("trends") or {}).get("lineages") or ():
+        name = str(item["name"])
+        match = item.get("match") or ()
+        if isinstance(match, str):
+            match = (match,)
+        patterns = tuple(str(pattern) for pattern in match)
+        for pattern in patterns:
+            try:
+                re.compile(pattern)
+            except re.error as error:
+                raise ValueError(f"lineage {name!r}: invalid match pattern {pattern!r}") from error
+        lineages.append(Lineage(id=str(item.get("id") or _slug(name)), name=name, patterns=patterns))
+
     return Config(
         roots=roots,
         include=include,
@@ -138,4 +179,5 @@ def load_config(path: Path | None = None, overrides: dict[str, object] | None = 
         families=tuple(families),
         metrics=metrics,
         headline=headline,
+        lineages=tuple(lineages),
     )

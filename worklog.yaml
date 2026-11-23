@@ -45,3 +45,11 @@ headline:
   asr: corpus_wer_raw
   st: corpus_bleu
   audio_mcq: choice_accuracy
+
+# Trend lines: several model-name prefixes can share one label and identity.
+# Identity is by model name, so renaming campaign folders never moves a line.
+trends:
+  lineages:
+    - {id: melt/fondue, name: MELT/Fondue, match: "^fondue"}
+    - {id: smurf/16n, name: "SMURF · 16n", match: "^eurollm-speech-16n"}
+    - {id: smurf/batch, name: "SMURF · batch", match: '^step-\d+$'}
