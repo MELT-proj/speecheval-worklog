@@ -1079,3 +1079,94 @@ def test_trends_page_renders_panels_and_one_line_per_lineage(trends_server):
         assert sorted(series["name"] for series in option["series"]) == ["MELT/Fondue", "SMURF · 16n"]
         assert option["xAxis"][0]["type"] == "value"
         browser.close()
+
+
+def _trend_panel_option(page, family):
+    return page.evaluate(
+        """(family) => {
+             const el = document.querySelector(`.trend-panel[data-family="${family}"] .trend-chart`);
+             return echarts.getInstanceByDom(el).getOption();
+           }""",
+        family,
+    )
+
+
+def test_trends_hiding_a_lineage_removes_its_series(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        page.uncheck("input.lineage-toggle[data-lineage='smurf/16n']")
+        page.wait_for_function(
+            """() => {
+                 const el = document.querySelector('.trend-panel[data-family="LibriSpeech"] .trend-chart');
+                 return echarts.getInstanceByDom(el).getOption().series.length === 1;
+               }"""
+        )
+        option = _trend_panel_option(page, "LibriSpeech")
+        assert [series["name"] for series in option["series"]] == ["MELT/Fondue"]
+        browser.close()
+
+
+def test_trends_marks_best_and_worst_in_the_metric_direction(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        option = _trend_panel_option(page, "LibriSpeech")
+        series = next(item for item in option["series"] if item["name"] == "MELT/Fondue")
+        coords = [item["coord"] for item in series["markPoint"]["data"]]
+        assert [17000, 0.15] in coords
+        assert [3000, 0.20] in coords
+        browser.close()
+
+
+def test_trends_progress_mode_scales_the_x_axis(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        page.click("#x-progress")
+        page.wait_for_function(
+            """() => document.querySelector('.trend-panel .trend-chart') &&
+                     echarts.getInstanceByDom(document.querySelector('.trend-panel .trend-chart'))
+                       .getOption().xAxis[0].name === 'Progress (%)'"""
+        )
+        option = _trend_panel_option(page, "LibriSpeech")
+        xs = [point[0] for series in option["series"] for point in series["data"]]
+        assert xs and max(xs) <= 100
+        browser.close()
+
+
+def test_trends_leaderboard_rank_ignores_hidden_lineages(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector("#leaderboard tbody tr")
+        assert page.locator("#leaderboard tbody tr[data-step='162000']").count() == 1
+        page.uncheck("input.lineage-toggle[data-lineage='smurf/16n']")
+        page.wait_for_function(
+            "() => document.querySelector('#leaderboard tbody tr').dataset.step === '17000'"
+        )
+        browser.close()
+
+
+def test_trends_pinning_a_checkpoint_draws_it_on_every_panel(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector("#leaderboard tbody tr")
+        page.click("#leaderboard tbody tr[data-step='162000']")
+        option = _trend_panel_option(page, "LibriSpeech")
+        marks = [
+            mark["xAxis"]
+            for series in option["series"]
+            for mark in (series.get("markLine") or {}).get("data", [])
+        ]
+        assert 162000 in marks
+        browser.close()
