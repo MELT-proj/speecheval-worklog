@@ -334,8 +334,7 @@ Results   Trends
 
 ```
 [ Results | Trends ]                         updated 10:42  ☾  Sign out
-Lineages [✓ MELT/Fondue] [✓ SMURF · 16n] [✓ SMURF · batch]
-Task [All ▾]  Metric per task [WER ▾] [BLEU ▾] [Acc ▾]
+Lineages (3/3) ▾  Task [All ▾]  Metric per task [WER ▾] [BLEU ▾] [Acc ▾]
 x-axis [Step ▾] [Progress %]     Reset zoom   [Pin checkpoint ▾]
 ┌ Speech recognition ───────────────────────────────────────────────────┐
 │ ┌ LibriSpeech ───────────────┐ ┌ VoxPopuli ──────────────────┐        │
@@ -356,21 +355,23 @@ x-axis [Step ▾] [Progress %]     Reset zoom   [Pin checkpoint ▾]
   all panels, symbols only when a lineage has few points. `markPoint` marks
   best and worst (direction-aware); labels show the step. One point → no
   markers.
-- **Interaction**: legend click hides a lineage everywhere; lineage checkboxes do
-  the same for users who prefer buttons. Hover crosshair and tooltip show
+- **Interaction**: legend click hides a lineage everywhere; the lineage dropdown
+  does the same for users who prefer checkboxes. Hover crosshair and tooltip show
   lineage, step, value, n/total. x zoom/pan is shared across panels through
   `echarts.connect` plus a `dataZoom` slider on the first panel; y zoom is
   inside-zoom only, with **Reset zoom**. `Reset zoom` also restores y.
-- **x-axis mode**: `Step` (absolute) is the default because merge decisions are
-  about a concrete checkpoint. `Progress %` divides by the lineage's own
-  `max_step` so curves with different budgets can be compared in shape.
+- **x-axis mode**: `Progress %` is the default, dividing each step by the
+  lineage's own `max_step` so curves with different budgets compare in shape.
+  `Step` switches to absolute checkpoints for a concrete merge decision.
 - **Pin**: choosing a checkpoint draws a dashed vertical `markLine` on every
   panel and highlights its leaderboard row. This is the "compare these two
   candidates" tool.
-- **Leaderboard**: sortable columns, best cell per family marked ● and worst ○,
-  mean rank and coverage, and a row click pins that checkpoint. A "minimum
-  coverage" control (default 1) lets the user ignore checkpoints that only ran
-  one benchmark.
+- **Leaderboard**: top five by default, expanded to the full list by a button;
+  sortable columns, best cell per family marked ● and worst ○, mean rank and
+  coverage, and a row click pins that checkpoint. A "minimum coverage" control
+  (default 1) lets the user ignore checkpoints that only ran one benchmark.
+- **Metric default**: the per-task headline unless `trends.default_metrics`
+  overrides it; ST defaults to `metricx` while the matrix keeps BLEU.
 - **Languages tab**: family selector (only families with >1 language), lineage
   selector, metric selector, one chart with a line per language. Legend is
   scrollable; hovering isolates a language. The side lists show "weakest now"

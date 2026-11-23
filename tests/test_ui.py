@@ -1050,8 +1050,11 @@ def trends_server(tmp_path):
                 campaign="speechval-trends",
                 created=f"2026-11-11T{step // 60000:02d}:00:00+00:00",
             )
-    cfg = load_config(
-        overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")}
+    cfg = dataclasses.replace(
+        load_config(
+            overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")}
+        ),
+        trend_metrics={},
     )
     store = Store(cfg.cache)
     store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
@@ -1068,6 +1071,8 @@ def test_trends_page_renders_panels_and_one_line_per_lineage(trends_server):
         page.goto(f"{trends_server}/trends")
         page.wait_for_selector(".trend-panel")
         assert page.locator(".nav a[aria-current='page']").inner_text() == "Trends"
+        assert page.locator(".trends-controls #tab-languages").count() == 1
+        assert page.locator("#lineage-menu").count() == 1
         assert page.locator(".trend-panel[data-family='LibriSpeech']").count() == 1
         assert page.locator(".trend-panel[data-family='FLEURS XtoEN']").count() == 1
         option = page.evaluate(
@@ -1078,6 +1083,7 @@ def test_trends_page_renders_panels_and_one_line_per_lineage(trends_server):
         )
         assert sorted(series["name"] for series in option["series"]) == ["MELT/Fondue", "SMURF · 16n"]
         assert option["xAxis"][0]["type"] == "value"
+        assert option["xAxis"][0]["name"] == "Progress (%)"
         browser.close()
 
 
@@ -1091,12 +1097,18 @@ def _trend_panel_option(page, family):
     )
 
 
+def _open_lineages(page):
+    if page.locator("#lineage-menu").get_attribute("open") is None:
+        page.click("#lineage-menu summary")
+
+
 def test_trends_hiding_a_lineage_removes_its_series(trends_server):
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
         page.goto(f"{trends_server}/trends")
         page.wait_for_selector(".trend-panel")
+        _open_lineages(page)
         page.uncheck("input.lineage-toggle[data-lineage='smurf/16n']")
         page.wait_for_function(
             """() => {
@@ -1115,6 +1127,12 @@ def test_trends_marks_best_and_worst_in_the_metric_direction(trends_server):
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
         page.goto(f"{trends_server}/trends")
         page.wait_for_selector(".trend-panel")
+        page.click("#x-step")
+        page.wait_for_function(
+            """() => document.querySelector('.trend-panel .trend-chart') &&
+                     echarts.getInstanceByDom(document.querySelector('.trend-panel .trend-chart'))
+                       .getOption().xAxis[0].name === 'Step'"""
+        )
         option = _trend_panel_option(page, "LibriSpeech")
         series = next(item for item in option["series"] if item["name"] == "MELT/Fondue")
         coords = [item["coord"] for item in series["markPoint"]["data"]]
@@ -1123,21 +1141,25 @@ def test_trends_marks_best_and_worst_in_the_metric_direction(trends_server):
         browser.close()
 
 
-def test_trends_progress_mode_scales_the_x_axis(trends_server):
+def test_trends_progress_is_the_default_and_step_switches(trends_server):
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
         page.goto(f"{trends_server}/trends")
         page.wait_for_selector(".trend-panel")
-        page.click("#x-progress")
+        option = _trend_panel_option(page, "LibriSpeech")
+        assert option["xAxis"][0]["name"] == "Progress (%)"
+        xs = [point[0] for series in option["series"] for point in series["data"]]
+        assert xs and max(xs) <= 100
+        page.click("#x-step")
         page.wait_for_function(
             """() => document.querySelector('.trend-panel .trend-chart') &&
                      echarts.getInstanceByDom(document.querySelector('.trend-panel .trend-chart'))
-                       .getOption().xAxis[0].name === 'Progress (%)'"""
+                       .getOption().xAxis[0].name === 'Step'"""
         )
         option = _trend_panel_option(page, "LibriSpeech")
         xs = [point[0] for series in option["series"] for point in series["data"]]
-        assert xs and max(xs) <= 100
+        assert max(xs) > 100
         browser.close()
 
 
@@ -1148,10 +1170,24 @@ def test_trends_leaderboard_rank_ignores_hidden_lineages(trends_server):
         page.goto(f"{trends_server}/trends")
         page.wait_for_selector("#leaderboard tbody tr")
         assert page.locator("#leaderboard tbody tr[data-step='162000']").count() == 1
+        _open_lineages(page)
         page.uncheck("input.lineage-toggle[data-lineage='smurf/16n']")
         page.wait_for_function(
             "() => document.querySelector('#leaderboard tbody tr').dataset.step === '17000'"
         )
+        browser.close()
+
+
+def test_trends_leaderboard_starts_at_top_five_and_expands(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector("#leaderboard tbody tr")
+        assert page.locator("#leaderboard tbody tr").count() == 5
+        page.click("#leaderboard-toggle")
+        assert page.locator("#leaderboard tbody tr").count() > 5
+        assert "Show top 5" in page.inner_text("#leaderboard-toggle")
         browser.close()
 
 
@@ -1161,6 +1197,7 @@ def test_trends_pinning_a_checkpoint_draws_it_on_every_panel(trends_server):
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
         page.goto(f"{trends_server}/trends")
         page.wait_for_selector("#leaderboard tbody tr")
+        page.click("#x-step")
         page.click("#leaderboard tbody tr[data-step='162000']")
         option = _trend_panel_option(page, "LibriSpeech")
         marks = [
@@ -1227,8 +1264,11 @@ def trends_gap_server(tmp_path):
     ]:
         log(f"fondue-step-{step}", "fleurs24-st-xen-dev",
             "st-fleurs-de_en", "st", {"corpus_bleu": bleu}, created, src="de", tgt="en")
-    cfg = load_config(
-        overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")}
+    cfg = dataclasses.replace(
+        load_config(
+            overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")}
+        ),
+        trend_metrics={},
     )
     store = Store(cfg.cache)
     store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
@@ -1244,6 +1284,12 @@ def test_trends_does_not_connect_across_a_missing_checkpoint(trends_gap_server):
         page = browser.new_page(viewport={"width": 1500, "height": 1200})
         page.goto(f"{trends_gap_server}/trends")
         page.wait_for_selector(".trend-panel")
+        page.click("#x-step")
+        page.wait_for_function(
+            """() => document.querySelector('.trend-panel .trend-chart') &&
+                     echarts.getInstanceByDom(document.querySelector('.trend-panel .trend-chart'))
+                       .getOption().xAxis[0].name === 'Step'"""
+        )
         option = _trend_panel_option(page, "FLEURS XtoEN")
         data = option["series"][0]["data"]
         assert [17000, None] in data
@@ -1294,6 +1340,7 @@ def test_trends_language_tab_drops_a_hidden_lineage(trends_server):
         page.wait_for_selector("#leaderboard tbody tr")
         page.click("#tab-languages")
         page.wait_for_selector("#language-list .lang-row")
+        _open_lineages(page)
         page.uncheck("input.lineage-toggle[data-lineage='smurf/16n']")
         page.wait_for_function(
             "() => document.querySelectorAll('#lang-lineage option').length === 0"

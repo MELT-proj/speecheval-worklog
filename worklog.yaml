@@ -49,6 +49,8 @@ headline:
 # Trend lines: several model-name prefixes can share one label and identity.
 # Identity is by model name, so renaming campaign folders never moves a line.
 trends:
+  default_metrics:
+    st: metricx
   lineages:
     - {id: melt/fondue, name: MELT/Fondue, match: "^fondue"}
     - {id: smurf/16n, name: "SMURF · 16n", match: "^eurollm-speech-16n"}

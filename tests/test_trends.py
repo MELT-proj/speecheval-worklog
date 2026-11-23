@@ -118,6 +118,7 @@ def test_panel_uses_the_configured_aggregate(cfg):
 
 
 def test_checkpoint_feed_has_headline_values_and_slice_counts(cfg):
+    cfg = dataclasses.replace(cfg, trend_metrics={})
     runs = [
         run(model="fondue-step-3000", provider="melt/fondue-step-3000",
             slice="st-fleurs-de_en", src="de", tgt="en", metrics={"corpus_bleu": 20.0}),
@@ -216,3 +217,14 @@ def test_weighted_zero_samples_does_not_crash_languages(cfg):
     body = build_languages(weighted, runs, "FLEURS XtoEN", "smurf/16n", "corpus_bleu")
     assert body["points"] == []
     assert body["regressions"] == []
+
+
+def test_st_trend_default_is_metricx(cfg):
+    tasks = build_trends(cfg, [])["tasks"]
+    assert tasks["st"]["metric"] == "metricx"
+    assert tasks["asr"]["metric"] == "corpus_wer_raw"
+
+
+def test_undefined_trend_metric_falls_back_to_the_headline(cfg):
+    broken = dataclasses.replace(cfg, trend_metrics={"st": "nope"})
+    assert build_trends(broken, [])["tasks"]["st"]["metric"] == "corpus_bleu"

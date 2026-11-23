@@ -13,13 +13,14 @@ window.Worklog = window.Worklog || {};
     lineages: null,
     task: "",
     metrics: {},
-    x: "step",
+    x: "progress",
     pinned: "",
     tab: "benchmarks",
     langFamily: "",
     langLineage: "",
     langMetric: "",
     isolatedLang: "",
+    leaderboardOpen: false,
     sort: { key: "mean", dir: 1 },
   };
 
@@ -70,7 +71,7 @@ window.Worklog = window.Worklog || {};
     for (const [key, value] of params.entries()) {
       if (key.startsWith("metric-") && value) state.metrics[key.slice("metric-".length)] = value;
     }
-    state.x = params.get("x") === "progress" ? "progress" : "step";
+    state.x = params.get("x") === "step" ? "step" : "progress";
     state.pinned = params.get("pinned") || "";
     state.tab = params.get("tab") === "languages" ? "languages" : "benchmarks";
     state.langFamily = params.get("lang-family") || "";
@@ -87,7 +88,7 @@ window.Worklog = window.Worklog || {};
     for (const [task, name] of Object.entries(state.metrics)) {
       if (name) params.set(`metric-${task}`, name);
     }
-    if (state.x !== "step") params.set("x", state.x);
+    if (state.x === "step") params.set("x", "step");
     if (state.pinned) params.set("pinned", state.pinned);
     if (state.tab === "languages") {
       params.set("tab", "languages");
@@ -122,6 +123,11 @@ window.Worklog = window.Worklog || {};
       label.appendChild(document.createTextNode(` ${lineage.name}`));
       box.appendChild(label);
     }
+    const checked = snapshot.lineages.filter(
+      (lineage) => !state.lineages || state.lineages.includes(lineage.id)
+    ).length;
+    const summary = document.getElementById("lineage-summary");
+    if (summary) summary.textContent = `Lineages (${checked}/${snapshot.lineages.length})`;
   }
 
   function renderTaskSelect() {
@@ -511,10 +517,11 @@ window.Worklog = window.Worklog || {};
       worst[family] = rule.lower ? Math.max(...values) : Math.min(...values);
     }
     const ordered = sortedRows(rows, families);
+    const visible = state.leaderboardOpen ? ordered : ordered.slice(0, 5);
     const head = families
       .map((family) => `<th data-sort="f:${W.escape(family)}">${W.escape(family)}</th>`)
       .join("");
-    const body = ordered
+    const body = visible
       .map((row) => {
         const cells = families
           .map((family) => {
@@ -537,7 +544,20 @@ window.Worklog = window.Worklog || {};
     box.innerHTML = `<table class="leaderboard-table"><thead><tr>
       <th>lineage</th><th data-sort="step">step</th>${head}
       <th data-sort="mean">mean rank</th><th data-sort="coverage">coverage</th>
-    </tr></thead><tbody>${body}</tbody></table>`;
+    </tr></thead><tbody>${body}</tbody></table>${
+      ordered.length > 5
+        ? `<button id="leaderboard-toggle" class="btn ghost" type="button">${
+            state.leaderboardOpen ? "Show top 5" : `Show all ${ordered.length} checkpoints`
+          }</button>`
+        : ""
+    }`;
+    const toggle = document.getElementById("leaderboard-toggle");
+    if (toggle) {
+      toggle.addEventListener("click", () => {
+        state.leaderboardOpen = !state.leaderboardOpen;
+        renderLeaderboard();
+      });
+    }
     for (const header of box.querySelectorAll("th[data-sort]")) {
       header.addEventListener("click", () => {
         const key = header.dataset.sort;
@@ -635,7 +655,11 @@ window.Worklog = window.Worklog || {};
     };
 
     const metrics = languageMetricChoices(family);
-    const metric = metrics.find((item) => item.name === state.langMetric) || metrics[0];
+    const preferred = metricOf(family.task);
+    const metric =
+      metrics.find((item) => item.name === state.langMetric) ||
+      metrics.find((item) => item.name === preferred) ||
+      metrics[0];
     state.langMetric = metric ? metric.name : "";
     metricSelect.innerHTML = "";
     for (const item of metrics) {

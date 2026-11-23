@@ -76,6 +76,7 @@ network still use an SSH tunnel or an HTTPS reverse proxy.
 | `metrics` | display label and `lower` direction per metric key |
 | `headline` | the metric a matrix cell shows per task |
 | `trends.lineages` | trend lines: `{id?, name, match: regex or [regex, ...]}` over model names |
+| `trends.default_metrics` | per-task trend metric override, e.g. `{st: metricx}` |
 
 `WORKLOG_PASSWORD` is an environment variable, not a config key: this repository
 is public and `worklog.yaml` is committed. The only paths reachable without a
@@ -114,14 +115,16 @@ single `step` base, while `eurollm-speech-16n-step-…` stays its own lineage.
 
 The page shows one line per lineage over checkpoint steps, one panel per
 benchmark family, grouped by task, with best and worst points marked in each
-metric's own direction. The **checkpoint leaderboard** ranks every checkpoint
-across the benchmarks it covered (mean rank, with coverage shown), ignores
-lineages you have hidden, and pins a chosen checkpoint as a vertical line on
-every panel. **Step / Progress %** switches between absolute checkpoints and
-each lineage's own training progress; x and y zoom are shared. The **Languages**
-tab loads one benchmark at a time and lists its weakest languages now and the
-biggest regressions from each language's own best, with the step where the
-final sustained drop starts. Tune the regression threshold and list size there.
+metric's own direction. **Progress %** is the default x-axis; **Step** switches
+to absolute checkpoints. ST defaults to **MetricX** through
+`trends.default_metrics` (the matrix keeps its own headline). The **checkpoint
+leaderboard** ranks every checkpoint across the benchmarks it covered (mean
+rank, with coverage shown), ignores lineages you have hidden, and pins a chosen
+checkpoint as a vertical line on every panel. It shows the top five until you
+ask for the rest. The **Languages** tab loads one benchmark at a time and lists
+its weakest languages now and the biggest regressions from each language's own
+best, with the step where the final sustained drop starts. Tune the regression
+threshold and list size there.
 
 ### Inspecting a run
 

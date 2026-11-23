@@ -31,16 +31,23 @@
 
   <main class="trends">
     <section class="card trends-controls">
-      <div id="lineage-toggles" class="filter-row" aria-label="Training lineages"></div>
+      <div class="tabs trend-view-tabs" role="tablist" aria-label="Trend view">
+        <button id="tab-benchmarks" class="tab active" type="button" role="tab" aria-selected="true">Benchmarks</button>
+        <button id="tab-languages" class="tab" type="button" role="tab" aria-selected="false">Languages</button>
+      </div>
       <div class="filter-row">
+        <details id="lineage-menu" class="lineage-menu">
+          <summary id="lineage-summary">Lineages</summary>
+          <div id="lineage-toggles" class="lineage-options" aria-label="Training lineages"></div>
+        </details>
         <div class="field">
           <label for="trend-task">Task</label>
           <select id="trend-task"></select>
         </div>
         <div id="metric-selects" class="filter-row"></div>
         <div class="segmented" role="group" aria-label="X axis">
-          <button id="x-step" class="tab active" type="button">Step</button>
-          <button id="x-progress" class="tab" type="button">Progress %</button>
+          <button id="x-step" class="tab" type="button">Step</button>
+          <button id="x-progress" class="tab active" type="button">Progress %</button>
         </div>
         <button id="reset-zoom" class="btn ghost" type="button">Reset zoom</button>
       </div>
@@ -65,10 +72,7 @@
     <section class="card">
       <div class="card-head">
         <h2>Language detail</h2>
-        <div class="tabs" role="tablist" aria-label="Trend view">
-          <button id="tab-benchmarks" class="tab active" type="button" role="tab" aria-selected="true">Benchmarks</button>
-          <button id="tab-languages" class="tab" type="button" role="tab" aria-selected="false">Languages</button>
-        </div>
+        <span class="hint">one line per language · weakest and regressed languages on the right</span>
       </div>
       <div id="language-pane" hidden>
         <div class="filter-row">

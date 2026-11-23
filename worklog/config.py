@@ -70,6 +70,7 @@ class Config:
     metrics: dict[str, Metric] = field(default_factory=dict)
     headline: dict[str, str] = field(default_factory=dict)
     lineages: tuple[Lineage, ...] = ()
+    trend_metrics: dict[str, str] = field(default_factory=dict)
 
     def lineage_for(self, model: str) -> Lineage | None:
         """The first configured lineage whose patterns match *model*."""
@@ -167,6 +168,11 @@ def load_config(path: Path | None = None, overrides: dict[str, object] | None = 
                 raise ValueError(f"lineage {name!r}: invalid match pattern {pattern!r}") from error
         lineages.append(Lineage(id=str(item.get("id") or _slug(name)), name=name, patterns=patterns))
 
+    trend_metrics = {
+        str(task): str(metric)
+        for task, metric in ((raw.get("trends") or {}).get("default_metrics") or {}).items()
+    }
+
     return Config(
         roots=roots,
         include=include,
@@ -180,4 +186,5 @@ def load_config(path: Path | None = None, overrides: dict[str, object] | None = 
         metrics=metrics,
         headline=headline,
         lineages=tuple(lineages),
+        trend_metrics=trend_metrics,
     )

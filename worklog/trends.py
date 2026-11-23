@@ -80,6 +80,14 @@ def fold_runs(config: Config, runs: Sequence[ScannedRun]) -> list[TrendRecord]:
     return sorted(winners.values(), key=lambda item: (item.lineage.id, item.step, item.run.benchmark, item.run.slice))
 
 
+def _trend_metric(config: Config, task: str) -> str | None:
+    """The metric a trends task defaults to: its configured override or the headline."""
+    override = config.trend_metrics.get(task)
+    if override in config.metrics:
+        return override
+    return config.headline.get(task)
+
+
 def build_trends(config: Config, runs: Sequence[ScannedRun]) -> dict:
     """The whole trends payload: lineages, task metrics, panels and checkpoints."""
     records = fold_runs(config, runs)
@@ -109,8 +117,9 @@ def build_trends(config: Config, runs: Sequence[ScannedRun]) -> dict:
     ]
 
     tasks = {}
-    for task, metric_name in config.headline.items():
-        rule = config.metrics.get(metric_name)
+    for task in config.headline:
+        metric_name = _trend_metric(config, task)
+        rule = config.metrics.get(metric_name) if metric_name else None
         if rule is None:
             continue
         tasks[task] = {
@@ -185,7 +194,7 @@ def build_trends(config: Config, runs: Sequence[ScannedRun]) -> dict:
             if not family_records:
                 continue
             task = family.task.removeprefix("chunked_")
-            metric = config.headline.get(task)
+            metric = _trend_metric(config, task)
             if metric is None:
                 continue
             pairs = [

@@ -69,3 +69,11 @@ def test_trends_lineage_regex_must_compile(tmp_path):
     path.write_text("trends:\n  lineages:\n    - {name: Broken, match: '[unclosed'}\n")
     with pytest.raises(ValueError, match="Broken"):
         load_config(path)
+
+
+def test_trends_default_metrics_parse(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text("trends:\n  default_metrics: {st: metricx}\n")
+    cfg = load_config(path)
+    assert cfg.trend_metrics == {"st": "metricx"}
+    assert load_config().trend_metrics == {"st": "metricx"}
