@@ -1170,3 +1170,25 @@ def test_trends_pinning_a_checkpoint_draws_it_on_every_panel(trends_server):
         ]
         assert 162000 in marks
         browser.close()
+
+
+def test_trends_languages_tab_lists_weakness_and_onset(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector("#leaderboard tbody tr")
+        page.click("#tab-languages")
+        page.wait_for_selector("#language-list .lang-row")
+        rows = page.locator("#language-list .lang-row")
+        assert rows.first.get_attribute("data-lang") == "mt"
+        onset = page.inner_text("#language-list .lang-row[data-lang='mt'] .lang-onset")
+        assert "162000" in onset
+        option = page.evaluate(
+            """() => {
+                 const el = document.getElementById('language-chart');
+                 return echarts.getInstanceByDom(el).getOption();
+               }"""
+        )
+        assert sorted(series["name"] for series in option["series"]) == ["de", "mt"]
+        browser.close()
