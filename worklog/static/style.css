@@ -545,3 +545,69 @@ table.matrix-table { border-collapse: separate; border-spacing: 0; width: 100%; 
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tagline { display: none; }
 }
+
+/* ---- trends ------------------------------------------------------------- */
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.nav-link {
+  padding: 7px 14px;
+  border-radius: 8px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+.nav-link:hover { color: var(--text); }
+.nav-link[aria-current="page"] { background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+
+.trends-controls .filter-row + .filter-row { margin-top: 12px; }
+.segmented { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; }
+.segmented .tab { border: 0; background: transparent; }
+.segmented .tab.active { background: var(--panel-2); color: var(--text); }
+.inline-field { flex-direction: row; align-items: center; gap: 8px; }
+.inline-field input { width: 64px; }
+
+.trend-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+  gap: 18px;
+}
+.trend-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.trend-panel-head { padding: 14px 16px 0; }
+.trend-panel-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.trend-chart { height: 300px; }
+
+.language-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 18px; }
+.language-chart { height: 420px; }
+.language-list { max-height: 420px; overflow: auto; }
+.language-list table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.language-list th, .language-list td { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); text-align: right; }
+.language-list th:first-child, .language-list td:first-child { text-align: left; }
+.lang-row { cursor: pointer; }
+.lang-row:hover { background: var(--hover); }
+.lang-onset { font-variant-numeric: tabular-nums; }
+
+@media (max-width: 900px) {
+  .trend-panels { grid-template-columns: 1fr; }
+  .language-layout { grid-template-columns: 1fr; }
+}

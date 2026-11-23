@@ -95,6 +95,10 @@ def create_app(
     def inspect_page():
         return send_from_directory(app.static_folder, "inspect.html")
 
+    @app.get("/trends")
+    def trends_page():
+        return send_from_directory(app.static_folder, "trends.html")
+
     @app.get("/api/snapshot")
     def api_snapshot():
         version = request.args.get("version")

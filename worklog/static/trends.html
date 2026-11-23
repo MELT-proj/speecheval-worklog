@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpeechEval Worklog · Trends</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" style="text-decoration:none;color:inherit">
+      <div class="mark" aria-hidden="true">SE</div>
+      <div>
+        <h1>SpeechEval <span>worklog</span></h1>
+        <p class="tagline">Checkpoint trends across benchmarks, tasks and languages</p>
+      </div>
+    </a>
+    <nav class="nav" aria-label="Pages">
+      <a class="nav-link" href="/">Results</a>
+      <a class="nav-link" href="/trends" aria-current="page">Trends</a>
+    </nav>
+    <div class="top-actions">
+      <span id="statusline" class="statusline">connecting…</span>
+      <button id="theme-toggle" class="btn ghost icon" type="button" aria-label="Switch theme" title="Light / dark">☾</button>
+      <form class="inline-form" method="post" action="/logout">
+        <button class="btn ghost" type="submit" title="Sign out">Sign out</button>
+      </form>
+      <button id="trend-refresh" class="btn" type="button" title="Rescan the source folder now">Refresh</button>
+    </div>
+  </header>
+
+  <main class="trends">
+    <section class="card trends-controls">
+      <div id="lineage-toggles" class="filter-row" aria-label="Training lineages"></div>
+      <div class="filter-row">
+        <div class="field">
+          <label for="trend-task">Task</label>
+          <select id="trend-task"></select>
+        </div>
+        <div id="metric-selects" class="filter-row"></div>
+        <div class="segmented" role="group" aria-label="X axis">
+          <button id="x-step" class="tab active" type="button">Step</button>
+          <button id="x-progress" class="tab" type="button">Progress %</button>
+        </div>
+        <button id="reset-zoom" class="btn ghost" type="button">Reset zoom</button>
+      </div>
+    </section>
+
+    <section id="trend-panels" class="trend-panels" aria-label="Benchmark trends"></section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Checkpoint leaderboard</h2>
+        <span class="hint">mean rank across covered benchmarks · click a row to pin it</span>
+        <label class="field inline-field">
+          <span>min coverage</span>
+          <input id="min-coverage" type="number" min="1" value="1">
+        </label>
+      </div>
+      <div id="leaderboard"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Language detail</h2>
+        <div class="tabs" role="tablist" aria-label="Trend view">
+          <button id="tab-benchmarks" class="tab active" type="button" role="tab" aria-selected="true">Benchmarks</button>
+          <button id="tab-languages" class="tab" type="button" role="tab" aria-selected="false">Languages</button>
+        </div>
+      </div>
+      <div id="language-pane" hidden>
+        <div class="filter-row">
+          <div class="field">
+            <label for="lang-family">Benchmark</label>
+            <select id="lang-family"></select>
+          </div>
+          <div class="field">
+            <label for="lang-lineage">Lineage</label>
+            <select id="lang-lineage"></select>
+          </div>
+          <div class="field">
+            <label for="lang-metric">Metric</label>
+            <select id="lang-metric"></select>
+          </div>
+          <div class="field">
+            <label for="lang-threshold">Regression %</label>
+            <input id="lang-threshold" type="number" min="0" max="100" value="10">
+          </div>
+          <div class="field">
+            <label for="lang-n">N</label>
+            <input id="lang-n" type="number" min="1" value="5">
+          </div>
+        </div>
+        <div class="language-layout">
+          <div id="language-chart" class="language-chart"></div>
+          <div id="language-list" class="language-list"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/vendor/echarts.min.js"></script>
+  <script src="/static/util.js"></script>
+  <script src="/static/trends.js"></script>
+</body>
+</html>

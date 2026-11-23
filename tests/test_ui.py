@@ -1009,3 +1009,73 @@ def test_matrix_blocks_are_visually_separated_and_headers_are_bold(live_server):
         assert styles["secondMargin"] != "0px"
         assert int(styles["weight"]) >= 700
         browser.close()
+
+
+@pytest.fixture
+def trends_server(tmp_path):
+    def asr(model, eval_model, wer, created):
+        make_log(
+            tmp_path,
+            model=model,
+            eval_model=eval_model,
+            benchmark="librispeech-validation-clean",
+            slice_id="asr-librispeech-validation-clean",
+            task="asr",
+            dataset_id=None,
+            src=None,
+            tgt=None,
+            lang="en",
+            metrics={"corpus_wer_raw": wer},
+            campaign="speechval-trends",
+            created=created,
+        )
+
+    asr("fondue-step-3000", "melt//fondue/checkpoint-3000", 0.20, "2026-11-10T10:00:00+00:00")
+    asr("fondue-step-17000", "melt//fondue/checkpoint-17000", 0.15, "2026-11-10T11:00:00+00:00")
+    asr("eurollm-speech-16n-step-0108000", "smurf//sweep/step=108000.ckpt", 0.18, "2026-11-10T12:00:00+00:00")
+    asr("eurollm-speech-16n-step-0162000", "smurf//sweep/step=162000.ckpt", 0.14, "2026-11-10T13:00:00+00:00")
+    for step, de, mt in [(102000, 30.0, 20.0), (162000, 32.0, 10.0), (270000, 31.0, 9.0)]:
+        for lang, value in (("de", de), ("mt", mt)):
+            make_log(
+                tmp_path,
+                model=f"eurollm-speech-16n-step-{step:06d}",
+                eval_model="smurf//sweep/step.ckpt",
+                benchmark="fleurs24-st-xen-dev",
+                slice_id=f"st-fleurs-{lang}_en",
+                task="st",
+                dataset_id=f"fleurs-{lang}_en",
+                src=lang,
+                tgt="en",
+                metrics={"corpus_bleu": value},
+                campaign="speechval-trends",
+                created=f"2026-11-11T{step // 60000:02d}:00:00+00:00",
+            )
+    cfg = load_config(
+        overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")}
+    )
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+def test_trends_page_renders_panels_and_one_line_per_lineage(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        assert page.locator(".nav a[aria-current='page']").inner_text() == "Trends"
+        assert page.locator(".trend-panel[data-family='LibriSpeech']").count() == 1
+        assert page.locator(".trend-panel[data-family='FLEURS XtoEN']").count() == 1
+        option = page.evaluate(
+            """() => {
+                 const el = document.querySelector('.trend-panel[data-family="LibriSpeech"] .trend-chart');
+                 return echarts.getInstanceByDom(el).getOption();
+               }"""
+        )
+        assert sorted(series["name"] for series in option["series"]) == ["MELT/Fondue", "SMURF · 16n"]
+        assert option["xAxis"][0]["type"] == "value"
+        browser.close()

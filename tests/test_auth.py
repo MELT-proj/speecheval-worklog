@@ -170,3 +170,8 @@ def test_login_with_a_trailing_slash_lands_on_the_dashboard(cfg, store, tmp_path
 def test_trends_api_is_locked(cfg, store, tmp_path):
     client = locked_app(cfg, store, tmp_path).test_client()
     assert client.get("/api/trends").status_code == 401
+
+
+def test_trends_page_is_locked(cfg, store, tmp_path):
+    client = locked_app(cfg, store, tmp_path).test_client()
+    assert client.get("/trends").status_code == 302
