@@ -1401,3 +1401,28 @@ def test_trends_tooltip_reports_coverage(trends_server):
         )
         assert "1/1" in text
         browser.close()
+
+
+def test_trends_controls_have_padding_and_the_lineage_menu_is_not_clipped(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        padding = page.evaluate(
+            "getComputedStyle(document.querySelector('.trends-controls')).paddingTop"
+        )
+        assert padding != "0px"
+        page.click("#lineage-summary")
+        assert page.locator("#lineage-menu").get_attribute("open") is not None
+        assert page.locator("#lineage-toggles").is_visible()
+        hit = page.evaluate(
+            """() => {
+                 const el = document.querySelector('input.lineage-toggle');
+                 const rect = el.getBoundingClientRect();
+                 const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                 return !!(hit && (hit === el || (hit.closest('label') && hit.closest('label').contains(el))));
+               }"""
+        )
+        assert hit
+        browser.close()
