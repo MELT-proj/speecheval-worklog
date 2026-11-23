@@ -117,3 +117,23 @@ def test_inspector_errors_are_typed(isolated_client, store, tmp_path):
     response = isolated_client.get(f"/api/run/{broken_id}/overview")
     assert response.status_code == 409 and response.get_json()["error"]
     assert isolated_client.get("/api/run/9999/overview").status_code == 404
+
+
+def test_trends_payload_shape(client, store):
+    store.sync([
+        run("a.json", model="fondue-step-3000", provider="melt/fondue-step-3000",
+            metrics={"corpus_bleu": 20.0}),
+    ])
+    body = client.get("/api/trends").get_json()
+    assert set(body) == {
+        "version", "generated_at", "aggregate", "lineages", "tasks", "panels", "checkpoints",
+    }
+    assert body["lineages"][0]["id"] == "melt/fondue"
+    assert body["panels"][0]["family"] == "FLEURS XtoEN"
+    assert body["panels"][0]["points"][0]["values"]["corpus_bleu"] == 20.0
+
+
+def test_trends_version_match_is_204(client, store):
+    store.sync([run()])
+    version = client.get("/api/trends").get_json()["version"]
+    assert client.get(f"/api/trends?version={version}").status_code == 204

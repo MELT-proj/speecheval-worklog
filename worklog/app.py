@@ -18,6 +18,7 @@ from .samples import Digest, DigestError, load_digest, select
 from .scanner import ScannedRun
 from .store import Store, open_store
 from .sync import sync_store
+from .trends import build_trends
 from .views import build_snapshot
 
 #: Sort keys the samples endpoint accepts; anything else falls back to ``order``.
@@ -92,6 +93,15 @@ def create_app(
         if version and version == store.version():
             return "", 204
         return jsonify(snapshot())
+
+    @app.get("/api/trends")
+    def api_trends():
+        version = request.args.get("version")
+        if version and version == store.version():
+            return "", 204
+        payload = build_trends(config, store.winning())
+        payload.update(version=store.version(), generated_at=_now())
+        return jsonify(payload)
 
     @app.get("/api/runs")
     def api_runs():

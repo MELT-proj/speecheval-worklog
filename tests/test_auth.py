@@ -165,3 +165,8 @@ def test_login_with_a_trailing_slash_lands_on_the_dashboard(cfg, store, tmp_path
     assert response.headers["Location"] == "/login/"
     redirect = client.get("/login/")
     assert redirect.status_code == 302 and redirect.headers["Location"] == "/"
+
+
+def test_trends_api_is_locked(cfg, store, tmp_path):
+    client = locked_app(cfg, store, tmp_path).test_client()
+    assert client.get("/api/trends").status_code == 401
