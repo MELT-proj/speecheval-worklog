@@ -21,7 +21,8 @@ re-scoring anything, re-reading audio, or needing the evaluation harness.
 - **Read-only.** The only writes are that cache and the inspector's
   rebuildable digest sidecars. There is no editing, no notes, no re-scoring;
   the sample browser is `/inspect?run=<id>`, served from per-log digests
-  cached under `<cache parent>/samples`.
+  cached under `<cache parent>/samples`. `/trends` reads the same cache and
+  plots checkpoints over training steps (see [Trends](#trends)).
 - Light and dark themes, remembered per browser (the toggle sits in the header;
   the first visit follows the OS preference).
 - **One shared password, off by default.** Set `WORKLOG_PASSWORD` to require a
@@ -74,6 +75,7 @@ network still use an SSH tunnel or an HTTPS reverse proxy.
 | `families` | matrix columns: `{name, task, benchmarks, direction?}` |
 | `metrics` | display label and `lower` direction per metric key |
 | `headline` | the metric a matrix cell shows per task |
+| `trends.lineages` | trend lines: `{id?, name, match: regex or [regex, ...]}` over model names |
 
 `WORKLOG_PASSWORD` is an environment variable, not a config key: this repository
 is public and `worklog.yaml` is committed. The only paths reachable without a
@@ -99,6 +101,27 @@ model and family (or sample-weighted with `aggregate: weighted`), labelled with
 the numbers to quote. A cell is `–` when nothing ran, `…` when the slices are
 scored but their post-scorer has not run yet, and `*` when only part of the
 family is scored.
+
+### Trends
+
+`/trends` answers "which checkpoint should we merge?" from the same cache. Each
+line is a configured **lineage** (`trends.lineages`), not a campaign: model
+names match a regex (or list of regexes), and every base matching one entry
+lands on one line. Campaign renames therefore do not move a line; a model-name
+rename is absorbed by adding a pattern to the existing entry, and an unmatched
+lineage still appears with a derived label. Bare `step-108000` names fold into a
+single `step` base, while `eurollm-speech-16n-step-…` stays its own lineage.
+
+The page shows one line per lineage over checkpoint steps, one panel per
+benchmark family, grouped by task, with best and worst points marked in each
+metric's own direction. The **checkpoint leaderboard** ranks every checkpoint
+across the benchmarks it covered (mean rank, with coverage shown), ignores
+lineages you have hidden, and pins a chosen checkpoint as a vertical line on
+every panel. **Step / Progress %** switches between absolute checkpoints and
+each lineage's own training progress; x and y zoom are shared. The **Languages**
+tab loads one benchmark at a time and lists its weakest languages now and the
+biggest regressions from each language's own best, with the step where the
+final sustained drop starts. Tune the regression threshold and list size there.
 
 ### Inspecting a run
 
@@ -162,9 +185,10 @@ worklog/config.py       YAML config, defaults, metric/family lookups
 worklog/scanner.py      inspect log -> one flat row
 worklog/store.py        SQLite cache, duplicate policy
 worklog/views.py        family matching, aggregation, snapshot payload
+worklog/trends.py       lineage folding, trend panels, language onset, leaderboard feed
 worklog/samples.py      one log -> per-sample digest, sidecar cache
 worklog/auth.py         single-password login, session guard, login throttle
 worklog/app.py          Flask routes + scanner thread
-worklog/static/         page, style, matrix.js, charts.js, feed.js, app.js
+worklog/static/         page, style, matrix.js, charts.js, trends.js, feed.js, app.js
 tests/                  unit + API + headless-browser tests
 ```
