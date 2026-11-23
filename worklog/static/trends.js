@@ -8,6 +8,7 @@ window.Worklog = window.Worklog || {};
   let languageChart = null;
   let lastLanguages = null;
   let languageTimer = null;
+  let syncingZoom = false;
   const state = {
     lineages: null,
     task: "",
@@ -200,27 +201,44 @@ window.Worklog = window.Worklog || {};
       good: css.getPropertyValue("--good").trim() || "#3ddc97",
       bad: css.getPropertyValue("--bad").trim() || "#ff6b6b",
       accent: css.getPropertyValue("--accent").trim() || "#4cc9f0",
+      accent2: css.getPropertyValue("--accent-2").trim() || "#7b61ff",
+      warn: css.getPropertyValue("--warn").trim() || "#f4b942",
     };
   }
 
-  function panelSeries(panel, task, metric, lower, colors) {
+  function lineageColor(lineageId, colors) {
+    const palette = [colors.accent, colors.accent2, colors.good, colors.warn, colors.bad];
+    const index = snapshot.lineages.findIndex((item) => item.id === lineageId);
+    return palette[(index < 0 ? 0 : index) % palette.length];
+  }
+
+  function panelSeries(panel, task, metric, lower, colors, meta) {
     const pinned = pinnedCheckpoint();
     const series = [];
     for (const lineage of visibleLineages()) {
-      const data = panel.points
-        .filter((point) => point.lineage === lineage.id && Number.isFinite((point.values || {})[metric]))
-        .map((point) => [xFor(point.step, lineage.id), point.values[metric]])
-        .sort((a, b) => a[0] - b[0]);
-      if (!data.length) continue;
+      const color = lineageColor(lineage.id, colors);
+      const points = panel.points.filter(
+        (point) => point.lineage === lineage.id && Number.isFinite((point.values || {})[metric])
+      );
+      if (!points.length) continue;
+      const byStep = new Map(points.map((point) => [point.step, point]));
+      for (const point of points) meta.set(`${lineage.id}|${xFor(point.step, lineage.id)}`, point);
+      const data = lineage.steps.map((step) => {
+        const point = byStep.get(step);
+        const value = point && point.values ? point.values[metric] : null;
+        return [xFor(step, lineage.id), Number.isFinite(value) ? value : null];
+      });
+      const finite = data.filter((point) => point[1] !== null);
+      if (!finite.length) continue;
 
-      let best = data[0];
-      let worst = data[0];
-      for (const point of data) {
+      let best = finite[0];
+      let worst = finite[0];
+      for (const point of finite) {
         if (lower ? point[1] < best[1] : point[1] > best[1]) best = point;
         if (lower ? point[1] > worst[1] : point[1] < worst[1]) worst = point;
       }
       const marks = [];
-      if (data.length > 1 && best !== worst) {
+      if (finite.length > 1 && best !== worst) {
         marks.push(
           { name: "best", coord: best, itemStyle: { color: colors.good }, label: { formatter: "best", color: colors.good } },
           { name: "worst", coord: worst, itemStyle: { color: colors.bad }, label: { formatter: "worst", color: colors.bad } }
@@ -233,7 +251,8 @@ window.Worklog = window.Worklog || {};
         showSymbol: data.length <= 12,
         symbolSize: 6,
         connectNulls: false,
-        lineStyle: { width: 2 },
+        itemStyle: { color },
+        lineStyle: { width: 2, color },
         emphasis: { focus: "series" },
       };
       if (marks.length) {
@@ -272,7 +291,9 @@ window.Worklog = window.Worklog || {};
     wrapper.appendChild(el);
     document.getElementById("trend-panels").appendChild(wrapper);
 
-    const series = panelSeries(panel, task, metric, rule.lower, colors);
+    const meta = new Map();
+    const lineageByName = new Map(snapshot.lineages.map((lineage) => [lineage.name, lineage.id]));
+    const series = panelSeries(panel, task, metric, rule.lower, colors, meta);
     if (!series.length) {
       el.innerHTML = `<div class="placeholder">No result for the visible lineages.</div>`;
       return;
@@ -289,21 +310,37 @@ window.Worklog = window.Worklog || {};
       backgroundColor: "transparent",
       animationDuration: 300,
       dataZoom: zoom,
+      legend: {
+        type: "scroll",
+        top: 0,
+        left: 0,
+        data: series.map((item) => item.name),
+        textStyle: { color: colors.ink, fontSize: 10 },
+      },
       tooltip: {
         trigger: "axis",
         backgroundColor: colors.panel,
         borderColor: colors.line,
         textStyle: { color: colors.text },
         formatter: (items) => {
-          if (!items.length) return "";
-          const step = state.x === "step" ? items[0].value[0] : Math.round(items[0].value[0]);
-          const rows = items
-            .map((item) => `${W.escape(item.seriesName)}: ${W.escape(format(metric, item.value[1]))}`)
+          const shown = items.filter((item) => item.value[1] !== null && item.value[1] !== undefined);
+          if (!shown.length) return "";
+          const step = state.x === "step" ? shown[0].value[0] : Math.round(shown[0].value[0]);
+          const rows = shown
+            .map((item) => {
+              const lineageId = lineageByName.get(item.seriesName);
+              const point = meta.get(`${lineageId}|${item.value[0]}`);
+              const coverage = point && point.coverage ? point.coverage[metric] : null;
+              const suffix = coverage
+                ? ` <span style="color:${colors.ink}">(${coverage.n}/${coverage.total}${coverage.status === "partial" ? " partial" : coverage.status === "pending" ? " pending" : ""})</span>`
+                : "";
+              return `${W.escape(item.seriesName)}: ${W.escape(format(metric, item.value[1]))}${suffix}`;
+            })
             .join("<br/>");
           return `<b>${state.x === "step" ? `step ${W.escape(step)}` : `${W.escape(step)}% of training`}</b><br/>${rows}`;
         },
       },
-      grid: { left: 56, right: 20, top: 18, bottom: first ? 62 : 44 },
+      grid: { left: 56, right: 20, top: 30, bottom: first ? 62 : 44 },
       xAxis: {
         type: "value",
         name: state.x === "step" ? "Step" : "Progress (%)",
@@ -327,6 +364,39 @@ window.Worklog = window.Worklog || {};
       },
       series,
     });
+    chart.on("legendselectchanged", (event) => {
+      const current = new Set(state.lineages || snapshot.lineages.map((lineage) => lineage.id));
+      for (const [name, on] of Object.entries(event.selected || {})) {
+        const lineage = snapshot.lineages.find((item) => item.name === name);
+        if (!lineage) continue;
+        if (on) current.add(lineage.id);
+        else current.delete(lineage.id);
+      }
+      state.lineages = [...current];
+      writeHash();
+      setTimeout(render, 0);
+    });
+    if (first) {
+      chart.on("datazoom", (event) => {
+        if (syncingZoom) return;
+        if (!Number.isFinite(event.start) || !Number.isFinite(event.end)) return;
+        syncingZoom = true;
+        try {
+          for (const other of charts) {
+            if (other !== chart) {
+              other.dispatchAction({
+                type: "dataZoom",
+                dataZoomIndex: 0,
+                start: event.start,
+                end: event.end,
+              });
+            }
+          }
+        } finally {
+          syncingZoom = false;
+        }
+      });
+    }
   }
 
   function renderPanels() {
@@ -344,7 +414,18 @@ window.Worklog = window.Worklog || {};
       return;
     }
     const colors = chartColors();
-    for (const panel of panels) renderPanel(panel, colors);
+    let lastTask = null;
+    for (const panel of panels) {
+      if (panel.task !== lastTask) {
+        const heading = document.createElement("h2");
+        heading.className = "trend-task-heading";
+        heading.dataset.task = panel.task;
+        heading.textContent = taskLabel(panel.task);
+        box.appendChild(heading);
+        lastTask = panel.task;
+      }
+      renderPanel(panel, colors);
+    }
     if (charts.length) echarts.connect("trends");
   }
 
@@ -518,9 +599,24 @@ window.Worklog = window.Worklog || {};
       loadLanguages();
     };
 
-    const candidates = snapshot.lineages.filter((lineage) =>
+    const candidates = visibleLineages().filter((lineage) =>
       family.points.some((point) => point.lineage === lineage.id)
     );
+    if (!candidates.length) {
+      familySelect.innerHTML = "";
+      lineageSelect.innerHTML = "";
+      metricSelect.innerHTML = "";
+      state.langLineage = "";
+      state.langMetric = "";
+      if (languageChart) {
+        languageChart.dispose();
+        languageChart = null;
+      }
+      document.getElementById("language-chart").innerHTML = "";
+      document.getElementById("language-list").innerHTML =
+        '<div class="placeholder">No visible lineage has results for this benchmark.</div>';
+      return null;
+    }
     const lineage = candidates.find((item) => item.id === state.langLineage) || candidates[0];
     state.langLineage = lineage ? lineage.id : "";
     lineageSelect.innerHTML = "";
@@ -733,6 +829,10 @@ window.Worklog = window.Worklog || {};
     renderPanels();
     renderLeaderboard();
     renderStatus();
+    if (state.tab === "languages") {
+      renderLanguageControls();
+      loadLanguages();
+    }
   }
 
   async function load(version) {

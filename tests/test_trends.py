@@ -206,3 +206,13 @@ def test_unknown_family_or_metric_returns_none(cfg):
     runs = _bleu_runs([(102000, 20.0), (162000, 10.0)])
     assert build_languages(cfg, runs, "Nope", "smurf/16n", "corpus_bleu") is None
     assert build_languages(cfg, runs, "FLEURS XtoEN", "smurf/16n", "nope") is None
+
+
+def test_weighted_zero_samples_does_not_crash_languages(cfg):
+    weighted = dataclasses.replace(cfg, aggregate="weighted")
+    runs = _bleu_runs([(102000, 20.0), (162000, 10.0)], "de")
+    for item in runs:
+        object.__setattr__(item, "total_samples", 0)
+    body = build_languages(weighted, runs, "FLEURS XtoEN", "smurf/16n", "corpus_bleu")
+    assert body["points"] == []
+    assert body["regressions"] == []

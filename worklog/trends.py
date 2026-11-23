@@ -266,11 +266,14 @@ def build_languages(
         ]
         if not pairs:
             continue
+        value = aggregate(pairs, config.aggregate)
+        if value is None:
+            continue
         points.append(
             {
                 "step": step,
                 "lang": language,
-                "value": aggregate(pairs, config.aggregate),
+                "value": value,
                 "n": len(pairs),
                 "total": len(cell),
             }

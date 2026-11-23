@@ -1192,3 +1192,165 @@ def test_trends_languages_tab_lists_weakness_and_onset(trends_server):
         )
         assert sorted(series["name"] for series in option["series"]) == ["de", "mt"]
         browser.close()
+
+
+@pytest.fixture
+def trends_gap_server(tmp_path):
+    def log(model, benchmark, slice_id, task, metrics, created, lang=None, src=None, tgt=None):
+        make_log(
+            tmp_path,
+            model=model,
+            eval_model="melt//fondue/checkpoint",
+            benchmark=benchmark,
+            slice_id=slice_id,
+            task=task,
+            dataset_id=None if task == "asr" else f"fleurs-{src}_en",
+            src=src,
+            tgt=tgt,
+            lang=lang,
+            metrics=metrics,
+            campaign="speechval-gap",
+            created=created,
+        )
+
+    for step, wer, created in [
+        (3000, 0.20, "2026-11-10T10:00:00+00:00"),
+        (17000, 0.15, "2026-11-10T11:00:00+00:00"),
+        (51000, 0.10, "2026-11-10T12:00:00+00:00"),
+    ]:
+        log(f"fondue-step-{step}", "librispeech-validation-clean",
+            "asr-librispeech-validation-clean", "asr",
+            {"corpus_wer_raw": wer}, created, lang="en")
+    for step, bleu, created in [
+        (3000, 20.0, "2026-11-10T13:00:00+00:00"),
+        (51000, 30.0, "2026-11-10T14:00:00+00:00"),
+    ]:
+        log(f"fondue-step-{step}", "fleurs24-st-xen-dev",
+            "st-fleurs-de_en", "st", {"corpus_bleu": bleu}, created, src="de", tgt="en")
+    cfg = load_config(
+        overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")}
+    )
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+def test_trends_does_not_connect_across_a_missing_checkpoint(trends_gap_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_gap_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        option = _trend_panel_option(page, "FLEURS XtoEN")
+        data = option["series"][0]["data"]
+        assert [17000, None] in data
+        browser.close()
+
+
+def test_trends_lineage_colour_is_stable_across_panels(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        librispeech = _trend_panel_option(page, "LibriSpeech")
+        fleurs = _trend_panel_option(page, "FLEURS XtoEN")
+        first = next(series for series in librispeech["series"] if series["name"] == "SMURF · 16n")
+        second = next(series for series in fleurs["series"] if series["name"] == "SMURF · 16n")
+        assert first["itemStyle"]["color"] == second["itemStyle"]["color"]
+        browser.close()
+
+
+def test_trends_panel_legend_hides_a_lineage(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        page.evaluate(
+            """() => {
+                 const el = document.querySelector('.trend-panel[data-family="LibriSpeech"] .trend-chart');
+                 const chart = echarts.getInstanceByDom(el);
+                 chart.dispatchAction({type: 'legendToggleSelect', name: 'SMURF · 16n'});
+               }"""
+        )
+        page.wait_for_function(
+            """() => {
+                 const el = document.querySelector('.trend-panel[data-family="LibriSpeech"] .trend-chart');
+                 return echarts.getInstanceByDom(el).getOption().series.length === 1;
+               }"""
+        )
+        browser.close()
+
+
+def test_trends_language_tab_drops_a_hidden_lineage(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector("#leaderboard tbody tr")
+        page.click("#tab-languages")
+        page.wait_for_selector("#language-list .lang-row")
+        page.uncheck("input.lineage-toggle[data-lineage='smurf/16n']")
+        page.wait_for_function(
+            "() => document.querySelectorAll('#lang-lineage option').length === 0"
+        )
+        assert "No visible lineage" in page.inner_text("#language-list")
+        browser.close()
+
+
+def test_trends_slider_zoom_is_shared(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        page.evaluate(
+            """() => {
+                 const charts = [...document.querySelectorAll('.trend-chart')]
+                   .map((el) => echarts.getInstanceByDom(el));
+                 charts[0].dispatchAction({type: 'dataZoom', dataZoomIndex: 2, start: 20, end: 80});
+               }"""
+        )
+        page.wait_for_function(
+            """() => {
+                 const charts = [...document.querySelectorAll('.trend-chart')]
+                   .map((el) => echarts.getInstanceByDom(el));
+                 const zoom = charts[1].getOption().dataZoom[0];
+                 return Math.round(zoom.start) === 20 && Math.round(zoom.end) === 80;
+               }"""
+        )
+        browser.close()
+
+
+def test_trends_panels_are_grouped_under_task_headings(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        headings = [text.lower() for text in page.locator(".trend-task-heading").all_inner_texts()]
+        assert "speech recognition" in headings
+        assert "speech translation" in headings
+        browser.close()
+
+
+def test_trends_tooltip_reports_coverage(trends_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{trends_server}/trends")
+        page.wait_for_selector(".trend-panel")
+        text = page.evaluate(
+            """() => {
+                 const el = document.querySelector('.trend-panel[data-family="LibriSpeech"] .trend-chart');
+                 const chart = echarts.getInstanceByDom(el);
+                 chart.dispatchAction({type: 'showTip', seriesIndex: 0, dataIndex: 0});
+                 return chart.getDom().innerText;
+               }"""
+        )
+        assert "1/1" in text
+        browser.close()

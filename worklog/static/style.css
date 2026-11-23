@@ -611,3 +611,23 @@ table.matrix-table { border-collapse: separate; border-spacing: 0; width: 100%; 
   .trend-panels { grid-template-columns: 1fr; }
   .language-layout { grid-template-columns: 1fr; }
 }
+
+.trend-task-heading {
+  grid-column: 1 / -1;
+  margin: 10px 2px 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.trend-task-heading::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.trend-task-heading:first-child { margin-top: 0; }
