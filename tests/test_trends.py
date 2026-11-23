@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 
 from worklog.config import Lineage
-from worklog.trends import build_trends, fold_runs, step_of
+from worklog.trends import build_languages, build_trends, fold_runs, step_of
 
 from .helpers import run
 
@@ -132,3 +132,77 @@ def test_checkpoint_feed_has_headline_values_and_slice_counts(cfg):
     assert row["model"] == "fondue-step-3000"
     assert row["values"] == {"FLEURS XtoEN": 25.0, "VoxPopuli": 0.12}
     assert row["coverage"] == {"FLEURS XtoEN": 2, "VoxPopuli": 1}
+
+
+def _bleu_runs(step_values, lang="de"):
+    return [
+        run(
+            model=f"eurollm-speech-16n-step-{step:06d}",
+            provider="smurf//sweep/step.ckpt",
+            benchmark="fleurs24-st-xen-dev",
+            slice=f"st-fleurs-{lang}_en",
+            task="st",
+            src=lang,
+            tgt="en",
+            metrics={"corpus_bleu": value},
+            created=f"2026-11-{10 + index:02d}T10:00:00+00:00",
+        )
+        for index, (step, value) in enumerate(step_values)
+    ]
+
+
+def test_languages_rank_worst_in_the_metric_direction(cfg):
+    runs = (
+        _bleu_runs([(102000, 30.0), (162000, 32.0), (270000, 31.0)], "de")
+        + _bleu_runs([(102000, 20.0), (162000, 10.0), (270000, 9.0)], "mt")
+    )
+    body = build_languages(cfg, runs, "FLEURS XtoEN", "smurf/16n", "corpus_bleu", threshold=0.1, n=1)
+    assert len(body["points"]) == 6
+    assert body["worst_now"][0]["lang"] == "mt"
+    assert body["worst_now"][0]["latest"] == 9.0
+    assert body["worst_now"][0]["latest_step"] == 270000
+    assert body["regressions"][0]["lang"] == "mt"
+    assert body["regressions"][0]["onset"] == 162000
+
+
+def test_lower_is_better_flips_the_worst_language(cfg):
+    runs = []
+    for step, de, fr in [(3000, 0.10, 0.20), (17000, 0.12, 0.25)]:
+        for lang, value in (("de", de), ("fr", fr)):
+            runs.append(
+                run(
+                    model=f"fondue-step-{step}",
+                    provider="melt/fondue",
+                    benchmark="voxpopuli-dev",
+                    slice=f"asr-voxpopuli-{lang}",
+                    task="asr",
+                    src=None,
+                    tgt=None,
+                    lang=lang,
+                    metrics={"corpus_wer_raw": value},
+                )
+            )
+    body = build_languages(cfg, runs, "VoxPopuli", "melt/fondue", "corpus_wer_raw", n=1)
+    assert body["worst_now"][0]["lang"] == "fr"
+
+
+def test_latest_is_each_languages_own_last_point(cfg):
+    runs = _bleu_runs([(102000, 20.0), (162000, 10.0)], "mt") + _bleu_runs(
+        [(102000, 30.0), (162000, 32.0), (270000, 31.0)], "de"
+    )
+    body = build_languages(cfg, runs, "FLEURS XtoEN", "smurf/16n", "corpus_bleu", n=5)
+    mt = next(item for item in body["worst_now"] if item["lang"] == "mt")
+    assert mt["latest"] == 10.0
+    assert mt["latest_step"] == 162000
+
+
+def test_onset_is_the_start_of_the_final_sustained_drop(cfg):
+    runs = _bleu_runs([(102000, 20.0), (108000, 10.0), (162000, 20.0), (270000, 10.0)], "mt")
+    body = build_languages(cfg, runs, "FLEURS XtoEN", "smurf/16n", "corpus_bleu", threshold=0.1)
+    assert body["regressions"][0]["onset"] == 270000
+
+
+def test_unknown_family_or_metric_returns_none(cfg):
+    runs = _bleu_runs([(102000, 20.0), (162000, 10.0)])
+    assert build_languages(cfg, runs, "Nope", "smurf/16n", "corpus_bleu") is None
+    assert build_languages(cfg, runs, "FLEURS XtoEN", "smurf/16n", "nope") is None

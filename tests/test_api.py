@@ -137,3 +137,34 @@ def test_trends_version_match_is_204(client, store):
     store.sync([run()])
     version = client.get("/api/trends").get_json()["version"]
     assert client.get(f"/api/trends?version={version}").status_code == 204
+
+
+def test_languages_endpoint_returns_lists(client, store):
+    store.sync([
+        run("a.json", model="eurollm-speech-16n-step-0108000",
+            provider="smurf//sweep/step.ckpt",
+            slice="st-fleurs-de_en", src="de", tgt="en", metrics={"corpus_bleu": 30.0}),
+        run("b.json", model="eurollm-speech-16n-step-0162000",
+            provider="smurf//sweep/step.ckpt",
+            slice="st-fleurs-de_en", src="de", tgt="en", metrics={"corpus_bleu": 20.0}),
+    ])
+    response = client.get(
+        "/api/trends/languages",
+        query_string={
+            "family": "FLEURS XtoEN",
+            "lineage": "smurf/16n",
+            "metric": "corpus_bleu",
+        },
+    )
+    body = response.get_json()
+    assert response.status_code == 200
+    assert body["family"] == "FLEURS XtoEN"
+    assert body["regressions"][0]["lang"] == "de"
+    assert set(body) >= {"version", "points", "worst_now", "regressions"}
+
+
+def test_languages_endpoint_unknown_family_is_404(client, store):
+    assert client.get(
+        "/api/trends/languages",
+        query_string={"family": "Nope", "lineage": "smurf/16n", "metric": "corpus_bleu"},
+    ).status_code == 404

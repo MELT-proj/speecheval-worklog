@@ -75,7 +75,7 @@ def test_pages_redirect_and_apis_answer_401(cfg, store, tmp_path):
     assert urlsplit(page.headers["Location"]).path == "/login"
     assert parse_qs(urlsplit(page.headers["Location"]).query)["next"] == ["/"]
     assert client.get("/inspect").status_code == 302
-    for path in ("/api/snapshot", "/api/runs", "/api/health"):
+    for path in ("/api/snapshot", "/api/runs", "/api/health", "/api/trends", "/api/trends/languages"):
         response = client.get(path)
         assert response.status_code == 401
         assert response.get_json() == {"error": "authentication required"}

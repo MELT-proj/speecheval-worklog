@@ -18,7 +18,7 @@ from .samples import Digest, DigestError, load_digest, select
 from .scanner import ScannedRun
 from .store import Store, open_store
 from .sync import sync_store
-from .trends import build_trends
+from .trends import build_languages, build_trends
 from .views import build_snapshot
 
 #: Sort keys the samples endpoint accepts; anything else falls back to ``order``.
@@ -33,6 +33,14 @@ def _as_int(name: str, default: int) -> int:
     """Query arg as an int; an unparsable value quietly means *default*."""
     try:
         return int(request.args.get(name, default))
+    except ValueError:
+        return default
+
+
+def _as_float(name: str, default: float) -> float:
+    """Query arg as a float; an unparsable value quietly means *default*."""
+    try:
+        return float(request.args.get(name, default))
     except ValueError:
         return default
 
@@ -100,6 +108,25 @@ def create_app(
         if version and version == store.version():
             return "", 204
         payload = build_trends(config, store.winning())
+        payload.update(version=store.version(), generated_at=_now())
+        return jsonify(payload)
+
+    @app.get("/api/trends/languages")
+    def api_trends_languages():
+        version = request.args.get("version")
+        if version and version == store.version():
+            return "", 204
+        payload = build_languages(
+            config,
+            store.winning(),
+            family=request.args.get("family", ""),
+            lineage=request.args.get("lineage", ""),
+            metric=request.args.get("metric", ""),
+            threshold=min(max(_as_float("threshold", 0.1), 0.0), 1.0),
+            n=max(_as_int("n", 5), 1),
+        )
+        if payload is None:
+            return jsonify({"error": "unknown family, lineage or metric"}), 404
         payload.update(version=store.version(), generated_at=_now())
         return jsonify(payload)
 
