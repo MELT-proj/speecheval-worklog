@@ -69,3 +69,66 @@ def test_fold_skips_errors_unclassified_and_unstepped_runs(cfg):
         run(model="canary-1b-v2", provider="melt/hf/canary"),
     ]
     assert fold_runs(cfg, runs) == []
+
+
+def _panel(payload, family):
+    return next(panel for panel in payload["panels"] if panel["family"] == family)
+
+
+def _point(payload, family, lineage, step):
+    return next(
+        point
+        for point in _panel(payload, family)["points"]
+        if point["lineage"] == lineage and point["step"] == step
+    )
+
+
+def test_panel_aggregates_slices_and_reports_per_metric_coverage(cfg):
+    runs = [
+        run(model="fondue-step-3000", provider="melt/fondue-step-3000",
+            slice="st-fleurs-de_en", src="de", tgt="en",
+            metrics={"corpus_bleu": 20.0}),
+        run(model="fondue-step-3000", provider="melt/fondue-step-3000",
+            slice="st-fleurs-fr_en", src="fr", tgt="en",
+            metrics={"corpus_chrf": 50.0}, pending=("metricx_scorer",)),
+    ]
+    payload = build_trends(cfg, runs)
+    point = _point(payload, "FLEURS XtoEN", "melt/fondue", 3000)
+    assert point["values"]["corpus_bleu"] == 20.0
+    assert point["coverage"]["corpus_bleu"] == {"n": 1, "total": 2, "status": "partial"}
+    assert point["coverage"]["metricx"] == {"n": 0, "total": 2, "status": "pending"}
+    assert "metricx" not in point["values"]
+    assert _panel(payload, "FLEURS XtoEN")["languages"] == ["de", "fr"]
+
+
+def test_panel_uses_the_configured_aggregate(cfg):
+    weighted = dataclasses.replace(cfg, aggregate="weighted")
+    runs = [
+        run(model="fondue-step-3000", provider="melt/fondue-step-3000",
+            slice="st-fleurs-de_en", src="de", tgt="en", total_samples=1,
+            metrics={"corpus_bleu": 10.0}),
+        run(model="fondue-step-3000", provider="melt/fondue-step-3000",
+            slice="st-fleurs-fr_en", src="fr", tgt="en", total_samples=3,
+            metrics={"corpus_bleu": 20.0}),
+    ]
+    point = _point(build_trends(weighted, runs), "FLEURS XtoEN", "melt/fondue", 3000)
+    assert point["values"]["corpus_bleu"] == 17.5
+    point = _point(build_trends(cfg, runs), "FLEURS XtoEN", "melt/fondue", 3000)
+    assert point["values"]["corpus_bleu"] == 15.0
+
+
+def test_checkpoint_feed_has_headline_values_and_slice_counts(cfg):
+    runs = [
+        run(model="fondue-step-3000", provider="melt/fondue-step-3000",
+            slice="st-fleurs-de_en", src="de", tgt="en", metrics={"corpus_bleu": 20.0}),
+        run(model="fondue-step-3000", provider="melt/fondue-step-3000",
+            slice="st-fleurs-fr_en", src="fr", tgt="en", metrics={"corpus_bleu": 30.0}),
+        run(model="fondue-step-3000", provider="melt/fondue-step-3000",
+            benchmark="voxpopuli-dev", slice="asr-voxpopuli-de", task="asr",
+            src=None, tgt=None, lang="de", metrics={"corpus_wer_raw": 0.12}),
+    ]
+    payload = build_trends(cfg, runs)
+    row = next(row for row in payload["checkpoints"] if row["step"] == 3000)
+    assert row["model"] == "fondue-step-3000"
+    assert row["values"] == {"FLEURS XtoEN": 25.0, "VoxPopuli": 0.12}
+    assert row["coverage"] == {"FLEURS XtoEN": 2, "VoxPopuli": 1}

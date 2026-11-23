@@ -7,11 +7,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from .config import Config, Family
-from .scanner import ScannedRun, model_family
-from .views import checkpoint_of, family_of
+from .scanner import ScannedRun, direction_of, model_family
+from .views import aggregate, checkpoint_of, family_of
 
 _GROUP_RANK = {"baseline": 0, "melt": 1, "smurf": 2, "other": 3}
 _GROUP_LABELS = {"baseline": "Baselines", "melt": "MELT", "smurf": "SMURF", "other": "Other"}
+_TASK_LABELS = {
+    "asr": "Speech recognition",
+    "st": "Speech translation",
+    "audio_mcq": "Multiple-choice QA",
+}
 _BARE_STEP_RE = re.compile(r"^step-(?P<step>\d+)$")
 
 
@@ -76,7 +81,7 @@ def fold_runs(config: Config, runs: Sequence[ScannedRun]) -> list[TrendRecord]:
 
 
 def build_trends(config: Config, runs: Sequence[ScannedRun]) -> dict:
-    """The trends payload: lineages now; tasks, panels and checkpoints in Task 3."""
+    """The whole trends payload: lineages, task metrics, panels and checkpoints."""
     records = fold_runs(config, runs)
     lineages: dict[str, dict] = {}
     for record in records:
@@ -92,7 +97,7 @@ def build_trends(config: Config, runs: Sequence[ScannedRun]) -> dict:
         entry["steps"].add(record.step)
 
     ordered = sorted(lineages.values(), key=lambda item: (_GROUP_RANK.get(item["group"], 3), item["name"]))
-    payload = [
+    lineage_payload = [
         {
             "id": entry["id"],
             "name": entry["name"],
@@ -102,4 +107,123 @@ def build_trends(config: Config, runs: Sequence[ScannedRun]) -> dict:
         }
         for entry in ordered
     ]
-    return {"aggregate": config.aggregate, "lineages": payload, "tasks": {}, "panels": [], "checkpoints": []}
+
+    tasks = {}
+    for task, metric_name in config.headline.items():
+        rule = config.metrics.get(metric_name)
+        if rule is None:
+            continue
+        tasks[task] = {
+            "label": _TASK_LABELS.get(task, task),
+            "metric": metric_name,
+            "metrics": [
+                {"name": name, "label": metric.label, "lower": metric.lower}
+                for name, metric in config.metrics.items()
+            ],
+        }
+
+    by_family: dict[str, list[TrendRecord]] = {}
+    for record in records:
+        by_family.setdefault(record.family.name, []).append(record)
+
+    panels = []
+    for family in config.families:
+        family_records = by_family.get(family.name)
+        if not family_records:
+            continue
+        task = family.task.removeprefix("chunked_")
+        if task not in tasks:
+            continue
+        cells: dict[tuple[str, int], list[TrendRecord]] = {}
+        for record in family_records:
+            cells.setdefault((record.lineage.id, record.step), []).append(record)
+        points = []
+        for (lineage_id, step), cell in sorted(cells.items()):
+            values = {}
+            coverage = {}
+            for name in config.metrics:
+                pairs = [
+                    (record.run.metrics[name], record.run.total_samples)
+                    for record in cell
+                    if isinstance(record.run.metrics.get(name), (int, float))
+                ]
+                if pairs:
+                    values[name] = aggregate(pairs, config.aggregate)
+                pending = any(record.run.pending for record in cell)
+                if not pairs:
+                    status = "pending" if pending else "empty"
+                elif len(pairs) < len(cell):
+                    status = "partial"
+                else:
+                    status = "ok"
+                coverage[name] = {"n": len(pairs), "total": len(cell), "status": status}
+            points.append(
+                {"lineage": lineage_id, "step": step, "values": values, "coverage": coverage}
+            )
+        languages = sorted(
+            {language for record in family_records if (language := language_column(record.run))}
+        )
+        panels.append(
+            {"family": family.name, "task": task, "languages": languages, "points": points}
+        )
+
+    checkpoints: list[dict] = []
+    by_checkpoint: dict[tuple[str, int], list[TrendRecord]] = {}
+    for record in records:
+        by_checkpoint.setdefault((record.lineage.id, record.step), []).append(record)
+    for (lineage_id, step), checkpoint_records in sorted(by_checkpoint.items()):
+        model = max(
+            checkpoint_records,
+            key=lambda item: ((item.run.created or ""), item.run.mtime_ns),
+        ).run.model
+        values = {}
+        coverage = {}
+        for family in config.families:
+            family_records = [
+                record for record in checkpoint_records if record.family.name == family.name
+            ]
+            if not family_records:
+                continue
+            task = family.task.removeprefix("chunked_")
+            metric = config.headline.get(task)
+            if metric is None:
+                continue
+            pairs = [
+                (record.run.metrics[metric], record.run.total_samples)
+                for record in family_records
+                if isinstance(record.run.metrics.get(metric), (int, float))
+            ]
+            if not pairs:
+                continue
+            values[family.name] = aggregate(pairs, config.aggregate)
+            coverage[family.name] = len(pairs)
+        if values:
+            checkpoints.append(
+                {
+                    "lineage": lineage_id,
+                    "model": model,
+                    "step": step,
+                    "values": values,
+                    "coverage": coverage,
+                }
+            )
+
+    return {
+        "aggregate": config.aggregate,
+        "lineages": lineage_payload,
+        "tasks": tasks,
+        "panels": panels,
+        "checkpoints": checkpoints,
+    }
+
+
+def language_column(run: ScannedRun) -> str | None:
+    """The slice's language column, mirroring ``util.js``'s ``languageOf``."""
+    if run.lang:
+        return run.lang
+    direction = direction_of(run.src, run.tgt)
+    if direction == "enx":
+        return run.tgt or run.src
+    if direction == "xen":
+        return run.src or run.tgt
+    return run.tgt or run.src
