@@ -1,4 +1,4 @@
-from worklog.views import aggregate, build_snapshot, family_of
+from worklog.views import aggregate, build_snapshot, family_of, match_family
 
 from .helpers import run
 
@@ -121,3 +121,40 @@ def test_polyspeech_audio_mcq_is_a_classified_family(cfg):
     assert snap["matrix"]["audio_mcq"]["metric"] == "choice_accuracy"
     cell = next(c for c in snap["matrix"]["audio_mcq"]["cells"] if c["family"] == "PolySpeech")
     assert cell["value"] == 0.465
+
+
+def test_match_family_per_split(cfg):
+    assert match_family(cfg.families, "covost2-test", "st", "xen", split="test").name == "CoVoST2 XtoEN"
+    assert match_family(cfg.families, "covost2-test", "st", "xen", split="validation") is None
+    assert match_family(cfg.families, "covost2-dev", "st", "xen", split="validation").name == "CoVoST2 XtoEN"
+    assert match_family(cfg.families, "covost2-dev", "st", "xen", split="test") is None
+
+
+def test_a_matrix_family_matches_only_its_own_split(cfg):
+    test_run = run(
+        model="fondue-step-1000", benchmark="covost2-test", slice="st-covost2-de_en",
+        metrics={"corpus_bleu": 20.0},
+    )  # fmt: skip
+    payload = build_snapshot(cfg, [test_run], [], "v", "now", split="test")
+    families = {cell["family"] for cell in payload["matrix"]["st"]["cells"]}
+    assert "CoVoST2 XtoEN" in families
+    assert payload["slices"][0]["family"] == "CoVoST2 XtoEN"
+    payload = build_snapshot(cfg, [test_run], [], "v", "now")
+    assert payload["slices"][0]["family"] == "unclassified"
+
+
+def test_empty_test_family_keeps_its_column(cfg):
+    speech = run(model="fondue-step-1000", benchmark="librispeech-test-clean", slice="asr-librispeech-test-clean",
+                 task="asr", src=None, tgt=None, lang="en", metrics={"corpus_wer_raw": 0.1})  # fmt: skip
+    payload = build_snapshot(cfg, [speech], [], "v", "now", split="test")
+    assert "PolySpeech" in payload["filters"]["families"]
+    cells = payload["matrix"]["audio_mcq"]["cells"]
+    assert [cell["status"] for cell in cells if cell["family"] == "PolySpeech"] == ["empty"]
+
+
+def test_an_unknown_benchmark_is_unclassified_in_both_splits(cfg):
+    # Whether an unknown benchmark lands on the test page is the app's input
+    # filter (see the API tests); here it must simply match no family in either split.
+    stranger = run(benchmark="something-new")
+    assert build_snapshot(cfg, [stranger], [], "v", "now")["slices"][0]["family"] == "unclassified"
+    assert build_snapshot(cfg, [stranger], [], "v", "now", split="test")["slices"][0]["family"] == "unclassified"

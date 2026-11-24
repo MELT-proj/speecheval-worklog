@@ -228,3 +228,16 @@ def test_st_trend_default_is_metricx(cfg):
 def test_undefined_trend_metric_falls_back_to_the_headline(cfg):
     broken = dataclasses.replace(cfg, trend_metrics={"st": "nope"})
     assert build_trends(broken, [])["tasks"]["st"]["metric"] == "corpus_bleu"
+
+
+def test_trends_ignores_test_benchmarks(cfg):
+    def covost(step, benchmark, target):
+        return run(
+            model=f"fondue-step-{step}", provider=f"melt/fondue-step-{step}",
+            benchmark=benchmark, slice="st-covost2-de_en", metrics={"corpus_bleu": target},
+        )  # fmt: skip
+    dev = covost(3000, "covost2-dev", 20.0)
+    test_only = covost(169000, "covost2-test", 30.0)
+    assert build_trends(cfg, [dev])["panels"]
+    assert build_trends(cfg, [test_only])["panels"] == []
+    assert build_trends(cfg, [test_only])["checkpoints"] == []

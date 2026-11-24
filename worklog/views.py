@@ -63,19 +63,28 @@ def _task_key(task: str) -> str:
 
 
 def match_family(
-    families: Sequence[Family], benchmark: str, task: str, direction: str | None
+    families: Sequence[Family],
+    benchmark: str,
+    task: str,
+    direction: str | None,
+    split: str = "validation",
 ) -> Family | None:
-    """The configured column a slice belongs to, or ``None`` if unclassified."""
+    """The configured column a slice belongs to, or ``None`` if unclassified.
+
+    A validation view matches ``family.benchmarks``; the test view matches
+    ``family.test_benchmarks``, so one benchmark id belongs to exactly one view.
+    """
     for family in families:
-        if family.task != _task_key(task) or benchmark not in family.benchmarks:
+        ids = family.test_benchmarks if split == "test" else family.benchmarks
+        if family.task != _task_key(task) or benchmark not in ids:
             continue
         if family.direction is None or family.direction == direction:
             return family
     return None
 
 
-def family_of(config: Config, run: ScannedRun) -> Family | None:
-    return match_family(config.families, run.benchmark, run.task, direction_of(run.src, run.tgt))
+def family_of(config: Config, run: ScannedRun, split: str = "validation") -> Family | None:
+    return match_family(config.families, run.benchmark, run.task, direction_of(run.src, run.tgt), split)
 
 
 def aggregate(values: Sequence[tuple[float, int]], kind: str) -> float | None:
@@ -89,8 +98,8 @@ def aggregate(values: Sequence[tuple[float, int]], kind: str) -> float | None:
     return sum(value for value, _ in values) / len(values)
 
 
-def _slice_row(config: Config, run: ScannedRun) -> dict:
-    family = family_of(config, run)
+def _slice_row(config: Config, run: ScannedRun, split: str = "validation") -> dict:
+    family = family_of(config, run, split)
     return {
         "id": f"{run.model}|{run.benchmark}|{run.slice}",
         "run_id": run.row_id,
@@ -149,15 +158,16 @@ def build_snapshot(
     now: str,
     failed: int | None = None,
     warnings: int = 0,
+    split: str = "validation",
 ) -> dict:
     """The whole view payload: slices, server-side matrix, filters, KPIs and feed."""
-    slices = [_slice_row(config, run) for run in runs]
+    slices = [_slice_row(config, run, split) for run in runs]
     providers = {run.model: (run.provider or run.model) for run in runs}
     model_groups = {model: model_family(provider) for model, provider in providers.items()}
     models = sorted(providers, key=lambda model: _model_sort_key(model, model_groups[model]))
     slices_by_family: dict[str, list[ScannedRun]] = {}
     for run in runs:
-        family = family_of(config, run)
+        family = family_of(config, run, split)
         if family is not None:
             slices_by_family.setdefault(family.name, []).append(run)
 
@@ -188,6 +198,7 @@ def build_snapshot(
     return {
         "version": version,
         "generated_at": now,
+        "split": split,
         "aggregate": config.aggregate,
         "kpis": {
             "models": len(models),
