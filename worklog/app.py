@@ -89,9 +89,12 @@ def create_app(
         else:
             feed = store.history(limit=50, exclude_benchmarks=test_ids)
             failed = store.count(status="error", exclude_benchmarks=test_ids)
+        # Feed-only ids (no matrix column) stay out of the slices/matrix input;
+        # they still reach the page through the feed window above.
+        columnless = config.columnless_test_benchmarks if split == "test" else frozenset()
         runs = [
             run for run in store.winning()
-            if (run.benchmark in test_ids) == (split == "test")
+            if (run.benchmark in test_ids) == (split == "test") and run.benchmark not in columnless
         ]  # fmt: skip
         return build_snapshot(
             config, runs, feed, store.version(), _now(),

@@ -73,6 +73,7 @@ class Config:
     lineages: tuple[Lineage, ...] = ()
     trend_metrics: dict[str, str] = field(default_factory=dict)
     test_benchmarks: frozenset[str] = frozenset()
+    columnless_test_benchmarks: frozenset[str] = frozenset()
 
     def lineage_for(self, model: str) -> Lineage | None:
         """The first configured lineage whose patterns match *model*."""
@@ -121,7 +122,8 @@ def load_config(path: Path | None = None, overrides: dict[str, object] | None = 
 
     Raises:
         ValueError: On an unknown ``aggregate``, a family direction other than
-            ``xen``/``enx``, or a headline naming an undefined metric.
+            ``xen``/``enx``, a headline naming an undefined metric, or a
+            benchmark id listed as both a validation and a test benchmark.
     """
     if path is not None and not Path(path).exists():
         raise FileNotFoundError(f"config not found: {path}")
@@ -157,9 +159,10 @@ def load_config(path: Path | None = None, overrides: dict[str, object] | None = 
             )
         )
 
+    columnless = frozenset(_ids(raw.get("test_benchmarks")))
     test_benchmarks = frozenset(
         benchmark for family in families for benchmark in family.test_benchmarks
-    ) | frozenset(_ids(raw.get("test_benchmarks")))
+    ) | columnless
     validation_benchmarks = {benchmark for family in families for benchmark in family.benchmarks}
     both = validation_benchmarks & test_benchmarks
     if both:
@@ -208,4 +211,5 @@ def load_config(path: Path | None = None, overrides: dict[str, object] | None = 
         lineages=tuple(lineages),
         trend_metrics=trend_metrics,
         test_benchmarks=test_benchmarks,
+        columnless_test_benchmarks=columnless,
     )

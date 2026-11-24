@@ -208,3 +208,24 @@ def test_test_page_serves_the_results_shell(client):
     response = client.get("/test")
     assert response.status_code == 200
     assert response.data == client.get("/").data
+
+
+def test_feed_only_test_benchmarks_stay_out_of_the_matrix(client, store):
+    store.sync(
+        [
+            run("mls.json", model="t-mls", benchmark="mls-test", slice="asr-mls-de", task="asr",
+                src=None, tgt=None, lang="de", metrics={"corpus_wer_raw": 0.2}),
+            run("xen.json", model="t-xen", benchmark="fleurs24-st-xen-test"),
+        ]
+    )
+    body = client.get("/api/snapshot?split=test").get_json()
+    assert {row["model"] for row in body["runs"]} == {"t-mls", "t-xen"}
+    assert {row["benchmark"] for row in body["slices"]} == {"fleurs24-st-xen-test"}
+    assert all(row["family"] != "unclassified" for row in body["slices"])
+    assert "t-mls" not in body["model_families"]
+
+
+def test_an_unknown_benchmark_stays_validation(client, store):
+    store.sync([run("x.json", model="t-unknown", benchmark="something-new")])
+    assert [row["model"] for row in client.get("/api/snapshot").get_json()["runs"]] == ["t-unknown"]
+    assert client.get("/api/snapshot?split=test").get_json()["runs"] == []
