@@ -25,6 +25,7 @@ def test_snapshot_shape(client, store):
     assert set(body) == {
         "version",
         "generated_at",
+        "split",
         "aggregate",
         "kpis",
         "filters",
