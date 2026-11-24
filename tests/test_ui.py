@@ -1426,3 +1426,87 @@ def test_trends_controls_have_padding_and_the_lineage_menu_is_not_clipped(trends
         )
         assert hit
         browser.close()
+
+
+@pytest.fixture
+def split_server(tmp_path):
+    make_log(
+        tmp_path,
+        model="t-val",
+        eval_model="melt/hf/val",
+        benchmark="fleurs24-st-xen-dev",
+        slice_id="st-fleurs-de_en",
+        src="de",
+        tgt="en",
+        metrics={"corpus_bleu": 20.0},
+        campaign="speechval-split",
+    )
+    make_log(
+        tmp_path,
+        model="t-pure-test",
+        eval_model="melt/hf/test",
+        benchmark="fleurs24-st-xen-test",
+        slice_id="st-fleurs-de_en",
+        src="de",
+        tgt="en",
+        metrics={"corpus_bleu": 30.0},
+        campaign="speechval-split",
+        created="2026-11-12T11:00:00+00:00",
+    )
+    cfg = load_config(overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")})
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+@pytest.fixture
+def validation_only_server(tmp_path):
+    make_log(tmp_path, model="t-val", eval_model="melt/hf/val", benchmark="fleurs24-st-xen-dev",
+             slice_id="st-fleurs-de_en", src="de", tgt="en", metrics={"corpus_bleu": 20.0},
+             campaign="speechval-split")  # fmt: skip
+    cfg = load_config(overrides={"roots": [str(tmp_path)], "include": ["*"], "cache": str(tmp_path / "w.sqlite")})
+    store = Store(cfg.cache)
+    store.sync([row for path in iter_log_paths(cfg) if (row := scan_run(path))])
+    server = make_server("127.0.0.1", 0, create_app(cfg, store))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+
+
+def test_test_page_renders_the_mirror_and_stays_split_pure(split_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{split_server}/test")
+        page.wait_for_selector("#feed .run")
+        assert page.locator(".nav a[aria-current='page']").inner_text() == "🚀 Test"
+        assert page.locator("#split-badge").is_visible()
+        assert page.inner_text("#split-badge") == "Test splits"
+        assert "t-pure-test" in page.inner_text("#feed")
+        assert "t-val" not in page.inner_text("#feed")
+        matrix = page.inner_text("#matrix").lower()
+        for family in ("librispeech", "voxpopuli", "fleurs xtoen", "europarl xtoen", "polyspeech"):
+            assert family in matrix
+
+        page.goto(split_server)
+        page.wait_for_selector("#feed .run")
+        assert page.locator(".nav a[aria-current='page']").inner_text() == "Results"
+        assert "t-val" in page.inner_text("#feed")
+        assert "t-pure-test" not in page.inner_text("#feed")
+        browser.close()
+
+
+def test_test_page_renders_before_any_test_campaign_exists(validation_only_server):
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1500, "height": 1200})
+        page.goto(f"{validation_only_server}/test")
+        page.wait_for_selector("#kpis .kpi")
+        assert "No runs yet" in page.inner_text("#feed")
+        assert "No results match" in page.inner_text("#matrix")
+        assert page.inner_text("#kpis")
+        assert page.locator("#split-badge").is_visible()
+        browser.close()

@@ -12,6 +12,8 @@ window.Worklog = window.Worklog || {};
   ];
   const GROUP_ORDER = ["baseline", "melt", "smurf", "other"];
   const TASK_LABELS = { asr: "ASR", st: "ST", audio_mcq: "QA" };
+  // `/test` serves the same shell; the path, not a server flag, says which split.
+  const SPLIT = location.pathname === "/test" ? "test" : "validation";
 
   let snapshot = null;
   let lastRefresh = null;
@@ -136,7 +138,10 @@ window.Worklog = window.Worklog || {};
   }
 
   async function load(version) {
-    const url = version ? `/api/snapshot?version=${encodeURIComponent(version)}` : "/api/snapshot";
+    const splitParam = `split=${SPLIT}`;
+    const url = version
+      ? `/api/snapshot?version=${encodeURIComponent(version)}&${splitParam}`
+      : `/api/snapshot?${splitParam}`;
     const response = await fetch(url, { cache: "no-store" });
     if (response.status === 401) {
       W.loginRedirect();
@@ -177,6 +182,13 @@ window.Worklog = window.Worklog || {};
 
   async function boot() {
     W.theme.init();
+    for (const link of document.querySelectorAll(".nav a")) {
+      const current = link.getAttribute("href") === (SPLIT === "test" ? "/test" : "/");
+      if (current) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    }
+    const badge = document.getElementById("split-badge");
+    if (badge) badge.hidden = SPLIT !== "test";
     window.addEventListener("worklog:theme", () => {
       if (snapshot) renderAll();
     });

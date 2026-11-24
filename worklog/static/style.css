@@ -671,3 +671,13 @@ table.matrix-table { border-collapse: separate; border-spacing: 0; width: 100%; 
 }
 .lineage-options .check { white-space: nowrap; }
 #leaderboard-toggle { margin-top: 12px; }
+
+.split-badge {
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .06em;
+}
