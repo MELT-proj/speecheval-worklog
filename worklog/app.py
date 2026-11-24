@@ -80,15 +80,32 @@ def create_app(
         """The run's digest from the sidecar cache; raises DigestError typed as HTTP."""
         return load_digest(row.path, row.mtime_ns, row.size, samples_dir, config.roots)
 
-    def snapshot() -> dict:
+    def snapshot(split: str = "validation") -> dict:
+        """The payload for one split: its winning runs, its feed window and its error count."""
+        test_ids = config.test_benchmarks
+        if split == "test":
+            feed = store.history(limit=50, benchmarks=test_ids)
+            failed = store.count(status="error", benchmarks=test_ids)
+        else:
+            feed = store.history(limit=50, exclude_benchmarks=test_ids)
+            failed = store.count(status="error", exclude_benchmarks=test_ids)
+        runs = [
+            run for run in store.winning()
+            if (run.benchmark in test_ids) == (split == "test")
+        ]  # fmt: skip
         return build_snapshot(
-            config, store.winning(), store.history(limit=50), store.version(), _now(),
-            failed=store.count(status="error"),
+            config, runs, feed, store.version(), _now(),
+            failed=failed,
             warnings=int(store.get_meta("warnings") or 0),
+            split=split,
         )
 
     @app.get("/")
     def index():
+        return send_from_directory(app.static_folder, "index.html")
+
+    @app.get("/test")
+    def test_page():
         return send_from_directory(app.static_folder, "index.html")
 
     @app.get("/inspect")
@@ -101,10 +118,13 @@ def create_app(
 
     @app.get("/api/snapshot")
     def api_snapshot():
+        split = request.args.get("split", "validation")
+        if split not in {"validation", "test"}:
+            return jsonify({"error": f"unknown split {split!r}"}), 400
         version = request.args.get("version")
         if version and version == store.version():
             return "", 204
-        return jsonify(snapshot())
+        return jsonify(snapshot(split))
 
     @app.get("/api/trends")
     def api_trends():

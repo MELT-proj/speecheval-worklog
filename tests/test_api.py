@@ -169,3 +169,42 @@ def test_languages_endpoint_unknown_family_is_404(client, store):
         "/api/trends/languages",
         query_string={"family": "Nope", "lineage": "smurf/16n", "metric": "corpus_bleu"},
     ).status_code == 404
+
+
+def test_snapshot_filters_to_the_requested_split(client, store):
+    store.sync(
+        [
+            run("val.json", model="t/val", benchmark="covost2-dev"),
+            run("test.json", model="t/only-test", benchmark="covost2-test"),
+        ]
+    )
+    validation = client.get("/api/snapshot").get_json()
+    assert [row["model"] for row in validation["runs"]] == ["t/val"]
+    assert "t/only-test" not in validation["filters"]["models"]
+    assert "t/only-test" not in validation["checkpoints"]
+    test = client.get("/api/snapshot?split=test").get_json()
+    assert [row["model"] for row in test["runs"]] == ["t/only-test"]
+    assert test["split"] == "test"
+    assert "t/val" not in test["filters"]["models"]
+
+
+def test_failed_kpi_counts_only_the_requested_split(client, store):
+    store.sync(
+        [
+            run("v1.json", benchmark="covost2-dev", status="error"),
+            run("v2.json", benchmark="covost2-dev", status="error", model="m2"),
+            run("t.json", benchmark="covost2-test", status="error"),
+        ]
+    )
+    assert client.get("/api/snapshot").get_json()["kpis"]["failed"] == 2
+    assert client.get("/api/snapshot?split=test").get_json()["kpis"]["failed"] == 1
+
+
+def test_an_unknown_split_is_a_bad_request(client):
+    assert client.get("/api/snapshot?split=banana").status_code == 400
+
+
+def test_test_page_serves_the_results_shell(client):
+    response = client.get("/test")
+    assert response.status_code == 200
+    assert response.data == client.get("/").data
