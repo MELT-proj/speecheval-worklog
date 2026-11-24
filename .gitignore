@@ -8,3 +8,4 @@ __pycache__/
 # local virtualenv and uv lockfile (dependencies live in requirements*.txt)
 .venv/
 uv.lock
+.worktrees/
