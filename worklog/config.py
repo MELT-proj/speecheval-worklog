@@ -31,6 +31,7 @@ class Family:
     task: str
     benchmarks: tuple[str, ...]
     direction: str | None = None
+    test_benchmarks: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ class Config:
     headline: dict[str, str] = field(default_factory=dict)
     lineages: tuple[Lineage, ...] = ()
     trend_metrics: dict[str, str] = field(default_factory=dict)
+    test_benchmarks: frozenset[str] = frozenset()
 
     def lineage_for(self, model: str) -> Lineage | None:
         """The first configured lineage whose patterns match *model*."""
@@ -100,6 +102,15 @@ def _expand(value: str | Path) -> Path:
 def _slug(name: str) -> str:
     """A stable id from a display label: ``SMURF · 16n`` -> ``smurf-16n``."""
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def _ids(value: object) -> tuple[str, ...]:
+    """A benchmark-id list, or the one id a YAML scalar spells."""
+    if not value:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(item) for item in value)
 
 
 def load_config(path: Path | None = None, overrides: dict[str, object] | None = None) -> Config:
@@ -142,8 +153,17 @@ def load_config(path: Path | None = None, overrides: dict[str, object] | None = 
                 task=item["task"],
                 benchmarks=tuple(item["benchmarks"]),
                 direction=direction,
+                test_benchmarks=_ids(item.get("test_benchmarks")),
             )
         )
+
+    test_benchmarks = frozenset(
+        benchmark for family in families for benchmark in family.test_benchmarks
+    ) | frozenset(_ids(raw.get("test_benchmarks")))
+    validation_benchmarks = {benchmark for family in families for benchmark in family.benchmarks}
+    both = validation_benchmarks & test_benchmarks
+    if both:
+        raise ValueError(f"benchmark {min(both)!r} is both a validation and a test benchmark")
 
     metrics = {
         name: Metric(label=str(spec.get("label", name)), lower=bool(spec.get("lower", False)))
@@ -187,4 +207,5 @@ def load_config(path: Path | None = None, overrides: dict[str, object] | None = 
         headline=headline,
         lineages=tuple(lineages),
         trend_metrics=trend_metrics,
+        test_benchmarks=test_benchmarks,
     )

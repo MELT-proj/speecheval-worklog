@@ -13,21 +13,44 @@ aggregate: macro                # macro | weighted
 
 # Matrix columns, in display order. A slice matches a family by benchmark and,
 # when given, direction (derived from its source/target languages).
+# columns: a slice's benchmark id must be listed under `benchmarks` (the
+# validation column) or `test_benchmarks` (the test page's same column). A
+# `benchmarks` entry means validation; a `test_benchmarks` entry means test;
+# an id in both is a config error, and an id in neither is unclassified.
 families:
-  - {name: LibriSpeech, task: asr, benchmarks: [librispeech-validation-clean, librispeech-validation-other]}
-  - {name: VoxPopuli, task: asr, benchmarks: [voxpopuli-dev]}
-  - {name: FLEURS XtoEN, task: st, direction: xen, benchmarks: [fleurs24-st-xen-dev]}
-  - {name: FLEURS ENtoX, task: st, direction: enx, benchmarks: [fleurs24-st-enx-dev]}
-  - {name: CoVoST2 XtoEN, task: st, direction: xen, benchmarks: [covost2-dev]}
-  - {name: CoVoST2 ENtoX, task: st, direction: enx, benchmarks: [covost2-enx-dev]}
-  - {name: Europarl XtoEN, task: st, direction: xen, benchmarks: [europarl-st-dev]}
-  - {name: Europarl ENtoX, task: st, direction: enx, benchmarks: [europarl-st-dev]}
+  - {name: LibriSpeech, task: asr, benchmarks: [librispeech-validation-clean, librispeech-validation-other],
+     test_benchmarks: [librispeech-test-clean, librispeech-test-other]}
+  - {name: VoxPopuli, task: asr, benchmarks: [voxpopuli-dev], test_benchmarks: [voxpopuli-test]}
+  - {name: FLEURS XtoEN, task: st, direction: xen, benchmarks: [fleurs24-st-xen-dev],
+     test_benchmarks: [fleurs24-st-xen-test]}
+  - {name: FLEURS ENtoX, task: st, direction: enx, benchmarks: [fleurs24-st-enx-dev],
+     test_benchmarks: [fleurs24-st-enx-test]}
+  - {name: CoVoST2 XtoEN, task: st, direction: xen, benchmarks: [covost2-dev],
+     test_benchmarks: [covost2-test]}
+  - {name: CoVoST2 ENtoX, task: st, direction: enx, benchmarks: [covost2-enx-dev],
+     test_benchmarks: [covost2-enx-test]}
+  - {name: Europarl XtoEN, task: st, direction: xen, benchmarks: [europarl-st-dev],
+     test_benchmarks: [europarl-st-test]}
+  - {name: Europarl ENtoX, task: st, direction: enx, benchmarks: [europarl-st-dev],
+     test_benchmarks: [europarl-st-test]}
   # Pairs with no English side (de->es, fr->it, ...), which match neither family
   # above: a slice takes the first family that matches, and this one has no
   # direction, so it catches only the leftovers. Qwen3-Omni is the only row
   # that runs them; the en-only baselines skip them.
-  - {name: Europarl other pairs, task: st, benchmarks: [europarl-st-dev]}
+  - {name: Europarl other pairs, task: st, benchmarks: [europarl-st-dev], test_benchmarks: [europarl-st-test]}
   - {name: PolySpeech, task: audio_mcq, benchmarks: [polyspeech-100-pa_qt-200]}
+
+# Test-side benchmarks that have no validation column at all: they appear in
+# the test page's feed and inspector, never in the matrix and never on Results.
+# Ids are the `speechval-test` suite's benchmark names (melt-eval
+# configs/eval/suites/speechval-test.yaml).
+test_benchmarks:
+  - mls-test
+  - fleurs24-asr-test
+  - mcif-chunked-asr
+  - mcif-chunked-st
+  - mcif-sfp
+  - air-bench-chat-speech
 
 metrics:
   corpus_wer_raw: {label: WER, lower: true}

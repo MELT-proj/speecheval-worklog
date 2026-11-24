@@ -77,3 +77,47 @@ def test_trends_default_metrics_parse(tmp_path):
     cfg = load_config(path)
     assert cfg.trend_metrics == {"st": "metricx"}
     assert load_config().trend_metrics == {"st": "metricx"}
+
+
+def test_test_benchmarks_parse(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "families:\n"
+        "  - {name: A, task: asr, benchmarks: [x-dev], test_benchmarks: [a-test, b-test]}\n"
+        "test_benchmarks: [c-test]\n"
+    )
+    cfg = load_config(path)
+    assert cfg.families[0].test_benchmarks == ("a-test", "b-test")
+    assert cfg.test_benchmarks == {"a-test", "b-test", "c-test"}
+
+
+def test_seeded_test_ids():
+    cfg = load_config()
+    assert cfg.test_benchmarks == {
+        "librispeech-test-clean",
+        "librispeech-test-other",
+        "voxpopuli-test",
+        "fleurs24-st-xen-test",
+        "fleurs24-st-enx-test",
+        "covost2-test",
+        "covost2-enx-test",
+        "europarl-st-test",
+        "mls-test",
+        "fleurs24-asr-test",
+        "mcif-chunked-asr",
+        "mcif-chunked-st",
+        "mcif-sfp",
+        "air-bench-chat-speech",
+    }
+    polyspeech = next(family for family in cfg.families if family.name == "PolySpeech")
+    assert polyspeech.test_benchmarks == ()
+
+
+def test_a_benchmark_cannot_be_validation_and_test(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "families:\n  - {name: A, task: asr, benchmarks: [x-dev]}\n"
+        "test_benchmarks: [x-dev]\n"
+    )
+    with pytest.raises(ValueError, match="x-dev"):
+        load_config(path)
