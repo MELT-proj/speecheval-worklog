@@ -66,3 +66,27 @@ def test_open_store_falls_back_when_path_is_unwritable(tmp_path):
     store = open_store(blocker / "w.sqlite", fallback_dir=tmp_path / "fallback")
     assert store.path == tmp_path / "fallback" / "worklog.sqlite"
     assert store.all() == []
+
+
+def test_history_filters_by_benchmark_set(tmp_path):
+    s = Store(tmp_path / "w.sqlite")
+    s.sync([run("a.json", benchmark="a"), run("b.json", benchmark="b"), run("c.json", benchmark="c")])
+    assert {r.benchmark for r in s.history(limit=10)} == {"a", "b", "c"}
+    assert {r.benchmark for r in s.history(limit=10, benchmarks={"a", "b"})} == {"a", "b"}
+    assert {r.benchmark for r in s.history(limit=10, exclude_benchmarks={"a"})} == {"b", "c"}
+    assert s.history(limit=10, benchmarks=set()) == []
+    assert {r.benchmark for r in s.history(limit=10, exclude_benchmarks=set())} == {"a", "b", "c"}
+
+
+def test_count_filters_by_benchmark_set(tmp_path):
+    s = Store(tmp_path / "w.sqlite")
+    s.sync(
+        [
+            run("a.json", benchmark="a", status="error"),
+            run("b.json", benchmark="b", status="error"),
+            run("c.json", benchmark="c", status="success"),
+        ]
+    )
+    assert s.count(status="error") == 2
+    assert s.count(status="error", benchmarks={"a"}) == 1
+    assert s.count(status="error", exclude_benchmarks={"a"}) == 1

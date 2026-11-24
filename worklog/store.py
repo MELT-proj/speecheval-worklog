@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from pathlib import Path
 
 from .scanner import ScannedRun
@@ -40,6 +40,27 @@ _RUN_COLUMNS = (
     "id, path, mtime_ns, size, campaign, model, benchmark, slice, task, src, tgt, status,"
     " total_samples, completed_samples, created, finished, log_id, provider, lang"
 )
+
+
+def _benchmark_clauses(
+    benchmarks: Collection[str] | None, exclude_benchmarks: Collection[str] | None
+) -> tuple[list[str], list[str]]:
+    """SQL clauses and parameters selecting (or excluding) a set of benchmark ids."""
+    clauses: list[str] = []
+    params: list[str] = []
+    if benchmarks is not None:
+        ids = sorted(set(benchmarks))
+        if ids:
+            clauses.append(f"benchmark IN ({','.join('?' * len(ids))})")
+            params.extend(ids)
+        else:
+            clauses.append("0")
+    if exclude_benchmarks is not None:
+        ids = sorted(set(exclude_benchmarks))
+        if ids:
+            clauses.append(f"benchmark NOT IN ({','.join('?' * len(ids))})")
+            params.extend(ids)
+    return clauses, params
 
 
 def open_store(path: Path, *, fallback_dir: Path) -> Store:
@@ -148,11 +169,21 @@ class Store:
             row = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
         return row["value"] if row else default
 
-    def count(self, *, status: str | None = None) -> int:
-        """Number of cached runs, optionally only one status (the KPI uses ``error``)."""
-        query = "SELECT COUNT(*) AS n FROM runs" + (" WHERE status=?" if status else "")
+    def count(
+        self,
+        *,
+        status: str | None = None,
+        benchmarks: Collection[str] | None = None,
+        exclude_benchmarks: Collection[str] | None = None,
+    ) -> int:
+        """Number of cached runs, optionally one status (the KPI uses ``error``) and split."""
+        clauses, params = _benchmark_clauses(benchmarks, exclude_benchmarks)
+        if status:
+            clauses.insert(0, "status=?")
+            params.insert(0, status)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._connect() as conn:
-            row = conn.execute(query, (status,) if status else ()).fetchone()
+            row = conn.execute(f"SELECT COUNT(*) AS n FROM runs{where}", params).fetchone()
         return int(row["n"])
 
     def stats(self) -> dict[str, tuple[int, int]]:
@@ -235,6 +266,8 @@ class Store:
         model: str | None = None,
         benchmark: str | None = None,
         status: str | None = None,
+        benchmarks: Collection[str] | None = None,
+        exclude_benchmarks: Collection[str] | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> list[ScannedRun]:
@@ -248,6 +281,9 @@ class Store:
             if value:
                 clauses.append(f"{column}=?")
                 params.append(value)
+        set_clauses, set_params = _benchmark_clauses(benchmarks, exclude_benchmarks)
+        clauses.extend(set_clauses)
+        params.extend(set_params)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self._load(where=where, params=params)
         return rows[offset : offset + limit]
